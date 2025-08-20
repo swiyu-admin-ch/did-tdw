@@ -522,7 +522,7 @@ impl DidDocumentState {
     pub fn validate_with_scid(
         &self,
         scid_to_validate: Option<String>,
-    ) -> Result<Arc<DidDoc>, TrustDidWebError> {
+    ) -> Result<DidDoc, TrustDidWebError> {
         let mut previous_entry: Option<DidLogEntry> = None;
         for entry in &self.did_log_entries {
             match previous_entry {
@@ -590,7 +590,7 @@ impl DidDocumentState {
             };
         }
         match previous_entry {
-            Some(entry) => Ok(entry.did_doc.into()),
+            Some(entry) => Ok(entry.did_doc),
             None => Err(TrustDidWebError::InvalidDataIntegrityProof(
                 "Invalid did log. No entries found".to_string(),
             )),
@@ -598,7 +598,7 @@ impl DidDocumentState {
     }
 
     /// Checks if all entries in the did log are valid (data integrity, versioning etc.)
-    pub fn validate(&self) -> Result<Arc<DidDoc>, TrustDidWebError> {
+    pub fn validate(&self) -> Result<DidDoc, TrustDidWebError> {
         self.validate_with_scid(None)
     }
 }
@@ -821,10 +821,10 @@ impl TrustDidWeb {
     }
 
     /// Yet another UniFFI-compliant method.
-    pub fn get_did_doc_obj(&self) -> Result<Arc<DidDoc>, TrustDidWebError> {
+    pub fn get_did_doc_obj(&self) -> Result<DidDoc, TrustDidWebError> {
         let did_doc_json = self.did_doc.clone();
         match json_from_str::<DidDoc>(&did_doc_json) {
-            Ok(doc) => Ok(doc.into()),
+            Ok(doc) => Ok(doc),
             Err(e) => Err(TrustDidWebError::DeserializationFailed(e.to_string())),
         }
     }
@@ -836,7 +836,7 @@ impl TrustDidWeb {
             .map_err(|err| TrustDidWebError::InvalidMethodSpecificId(format!("{err}")))?;
         let scid = did.get_scid();
         let did_doc_arc = did_doc_state.validate_with_scid(Some(scid.to_owned()))?;
-        let did_doc = did_doc_arc.as_ref().clone();
+        let did_doc = did_doc_arc.clone();
         let did_doc_str = match serde_json::to_string(&did_doc) {
             Ok(v) => v,
             Err(e) => return Err(TrustDidWebError::SerializationFailed(e.to_string())),

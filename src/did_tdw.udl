@@ -3,25 +3,26 @@ namespace did_tdw {
 };
 
 [External="did_sidekicks"]
-typedef extern Jwk;
+typedef struct Jwk;
 
 [External="did_sidekicks"]
-typedef extern VerificationType;
+typedef enum VerificationType;
 
 [External="did_sidekicks"]
-typedef extern VerificationMethod;
+typedef struct VerificationMethod;
 
-[ExternalInterface="did_sidekicks"]
-typedef extern DidDoc;
+// Returned by `TrustDidWeb`'s method get_did_doc_obj
+[External="did_sidekicks"]
+typedef struct DidDoc;
 
-[ExternalInterface="did_sidekicks"]
-typedef extern DidLogEntryJsonSchema;
+[External="did_sidekicks"]
+typedef trait DidLogEntryJsonSchema;
 
-[ExternalInterface="did_sidekicks"]
-typedef extern DidLogEntryValidatorError;
+[External="did_sidekicks"]
+typedef enum DidLogEntryValidatorError;
 
-[ExternalInterface="did_sidekicks"]
-typedef extern DidLogEntryValidator;
+[External="did_sidekicks"]
+typedef struct DidLogEntryValidator;
 
 /// The error accompanying TrustDidWebId.
 /// It might occur while calling TrustDidWebId methods.
