@@ -821,10 +821,10 @@ impl TrustDidWeb {
     }
 
     /// Yet another UniFFI-compliant method.
-    pub fn get_did_doc_obj(&self) -> Result<DidDoc, TrustDidWebError> {
+    pub fn get_did_doc_obj(&self) -> Result<Arc<DidDoc>, TrustDidWebError> {
         let did_doc_json = self.did_doc.clone();
         match json_from_str::<DidDoc>(&did_doc_json) {
-            Ok(doc) => Ok(doc),
+            Ok(doc) => Ok(doc.into()),
             Err(e) => Err(TrustDidWebError::DeserializationFailed(e.to_string())),
         }
     }
