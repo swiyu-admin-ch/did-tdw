@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-use crate::did_tdw_jsonschema::DidLogEntryJsonSchema;
+use crate::did_tdw_jsonschema::TrustDidWebDidLogEntryJsonSchema;
 use crate::did_tdw_parameters::*;
 use crate::errors::*;
 use chrono::serde::ts_seconds;
 use chrono::{DateTime, SecondsFormat, Utc};
 use did_sidekicks::did_doc::*;
-use did_sidekicks::did_jsonschema::DidLogEntryValidator;
+use did_sidekicks::did_jsonschema::{DidLogEntryJsonSchema, DidLogEntryValidator};
 use did_sidekicks::ed25519::*;
 use did_sidekicks::jcs_sha256_hasher::JcsSha256Hasher;
 use did_sidekicks::vc_data_integrity::*;
@@ -16,7 +16,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value::Object as JsonObject;
 use serde_json::{
-    from_str as json_from_str, json, to_string as json_to_string, Value as JsonValue, Value,
+    from_str as json_from_str, json, to_string as json_to_string, Value as JsonValue,
 };
 use std::cmp::PartialEq;
 use std::sync::{Arc, LazyLock};
@@ -317,8 +317,8 @@ impl DidDocumentState {
         // CAUTION Despite parallelization, bear in mind that (according to benchmarks) the overall
         //         performance improvement will be considerable only in case of larger DID logs,
         //         featuring at least as many entries as `std::thread::available_parallelism()` would return.
-        let validator =
-            DidLogEntryValidator::from(DidLogEntryJsonSchema::V03EidConform.as_schema());
+        let sch: &dyn DidLogEntryJsonSchema = &TrustDidWebDidLogEntryJsonSchema::V03EidConform;
+        let validator = DidLogEntryValidator::from(sch);
         if let Some(err) = did_log
             .par_lines() // engage a parallel iterator (thanks to 'use rayon::prelude::*;' import)
             // Once a non-None value is produced from the map operation,
@@ -522,7 +522,7 @@ impl DidDocumentState {
     pub fn validate_with_scid(
         &self,
         scid_to_validate: Option<String>,
-    ) -> Result<Arc<DidDoc>, TrustDidWebError> {
+    ) -> Result<DidDoc, TrustDidWebError> {
         let mut previous_entry: Option<DidLogEntry> = None;
         for entry in &self.did_log_entries {
             match previous_entry {
@@ -590,7 +590,7 @@ impl DidDocumentState {
             };
         }
         match previous_entry {
-            Some(entry) => Ok(entry.did_doc.into()),
+            Some(entry) => Ok(entry.did_doc),
             None => Err(TrustDidWebError::InvalidDataIntegrityProof(
                 "Invalid did log. No entries found".to_string(),
             )),
@@ -598,7 +598,7 @@ impl DidDocumentState {
     }
 
     /// Checks if all entries in the did log are valid (data integrity, versioning etc.)
-    pub fn validate(&self) -> Result<Arc<DidDoc>, TrustDidWebError> {
+    pub fn validate(&self) -> Result<DidDoc, TrustDidWebError> {
         self.validate_with_scid(None)
     }
 }
@@ -836,7 +836,7 @@ impl TrustDidWeb {
             .map_err(|err| TrustDidWebError::InvalidMethodSpecificId(format!("{err}")))?;
         let scid = did.get_scid();
         let did_doc_arc = did_doc_state.validate_with_scid(Some(scid.to_owned()))?;
-        let did_doc = did_doc_arc.as_ref().clone();
+        let did_doc = did_doc_arc.clone();
         let did_doc_str = match serde_json::to_string(&did_doc) {
             Ok(v) => v,
             Err(e) => return Err(TrustDidWebError::SerializationFailed(e.to_string())),

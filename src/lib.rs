@@ -16,8 +16,8 @@ pub mod did_tdw_jsonschema;
 // CAUTION All structs required by UniFFI bindings generator (declared in UDL) MUST also be "used" here
 use did_tdw::*;
 use did_sidekicks::did_doc::*;
-use did_sidekicks::ed25519::*;
-use did_sidekicks::did_jsonschema::*;
+//use did_sidekicks::ed25519::*;
+//use did_sidekicks::did_jsonschema::*;
 //use did_sidekicks::vc_data_integrity;
 use errors::*;
 use did_tdw_jsonschema::*;
@@ -30,12 +30,10 @@ mod test {
     use did_sidekicks::did_doc::*;
     use did_sidekicks::ed25519::*;
     use did_sidekicks::jcs_sha256_hasher::*;
-    use did_sidekicks::multibase::*;
     use crate::errors::*;
     use did_sidekicks::vc_data_integrity::*;
     use chrono::DateTime;
     use core::panic;
-    use hex::encode as hex_encode;
     use rand::distributions::Alphanumeric;
     use rand::Rng;
     use rstest::{fixture, rstest};

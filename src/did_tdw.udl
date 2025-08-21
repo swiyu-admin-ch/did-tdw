@@ -2,35 +2,27 @@
 namespace did_tdw {
 };
 
-[ExternalInterface="did_sidekicks"]
-typedef extern Ed25519Signature;
-
-[ExternalInterface="did_sidekicks"]
-typedef extern Ed25519SigningKey;
-
-[ExternalInterface="did_sidekicks"]
-typedef extern Ed25519VerifyingKey;
-
-[ExternalInterface="did_sidekicks"]
-typedef extern Ed25519KeyPair;
+[External="did_sidekicks"]
+typedef struct Jwk;
 
 [External="did_sidekicks"]
-typedef extern Jwk;
+typedef enum VerificationType;
 
 [External="did_sidekicks"]
-typedef extern VerificationType;
+typedef struct VerificationMethod;
+
+// Returned by `TrustDidWeb`'s method get_did_doc_obj
+[External="did_sidekicks"]
+typedef interface DidDoc;
 
 [External="did_sidekicks"]
-typedef extern VerificationMethod;
+typedef trait DidLogEntryJsonSchema;
 
-[ExternalInterface="did_sidekicks"]
-typedef extern DidDoc;
+[External="did_sidekicks"]
+typedef enum DidLogEntryValidatorError;
 
-[ExternalInterface="did_sidekicks"]
-typedef extern DidLogEntryValidatorError;
-
-[ExternalInterface="did_sidekicks"]
-typedef extern DidLogEntryValidator;
+[External="did_sidekicks"]
+typedef struct DidLogEntryValidator;
 
 /// The error accompanying TrustDidWebId.
 /// It might occur while calling TrustDidWebId methods.
@@ -90,19 +82,10 @@ interface TrustDidWeb {
     DidDoc get_did_doc_obj();
 };
 
-interface DidDocumentState {
-    [Name=from, Throws=TrustDidWebError]
-    constructor(string did_log);
-    [Throws=TrustDidWebError]
-    DidDoc validate();
-    [Throws=TrustDidWebError]
-    DidDoc validate_with_scid(string? scid);
-};
-
-/// W.r.t. corresponding specification version available at https://identity.foundation/didwebvh
+/// W.r.t. corresponding specification version available at https://identity.foundation/didwebvh/v0.3
 ///
 /// # CAUTION The single currently supported `didwebvh` specification version is: v0.3
-enum DidLogEntryJsonSchema {
+enum TrustDidWebDidLogEntryJsonSchema {
     /// As defined by https://identity.foundation/didwebvh/v0.3 but w.r.t. (eID-conformity) addendum:
     /// - https://confluence.bit.admin.ch/display/EIDTEAM/DID+Log+Conformity+Check
     /// - https://confluence.bit.admin.ch/display/EIDTEAM/DID+Doc+Conformity+Check
