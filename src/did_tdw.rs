@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::did_tdw_jsonschema::TrustDidWebDidLogEntryJsonSchema;
-use crate::did_tdw_parameters::*;
+use crate::did_tdw_method_parameters::*;
 use crate::errors::*;
 use chrono::serde::ts_seconds;
 use chrono::{DateTime, SecondsFormat, Utc};
@@ -37,7 +37,7 @@ pub struct DidLogEntry {
     pub version_index: usize,
     #[serde(with = "ts_seconds")]
     pub version_time: DateTime<Utc>,
-    pub parameters: DidMethodParameters,
+    pub parameters: TrustDidWebDidMethodParameters,
     pub did_doc: DidDoc,
     #[serde(skip)]
     pub did_doc_json: String,
@@ -56,7 +56,7 @@ impl DidLogEntry {
         version_id: String,
         version_index: usize,
         version_time: DateTime<Utc>,
-        parameters: DidMethodParameters,
+        parameters: TrustDidWebDidMethodParameters,
         did_doc: DidDoc,
         did_doc_json: String,
         did_doc_hash: String,
@@ -155,7 +155,7 @@ impl DidLogEntry {
         //            A Data Integrity Proof across the entry, signed by a DID authorized to update the DIDDoc, using the versionId as the challenge.
         let prev_version_id = match &self.prev_entry {
             Some(v) => v.version_id.clone(),
-            None => match self.parameters.scid.clone() {
+            None => match self.parameters.get_scid_option() {
                 Some(v) => v,
                 None => {
                     return Err(TrustDidWebError::DeserializationFailed(
@@ -298,22 +298,18 @@ impl DidLogEntry {
     }
 }
 
+/// The parser for `did:tdw` DID logs implementing [`TryFrom<String>`] trait.
 #[derive(Serialize, Deserialize, Debug)]
-pub struct DidDocumentState {
+pub struct TrustDidWebDidLog {
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub did_log_entries: Vec<DidLogEntry>,
+    did_method_parameters: TrustDidWebDidMethodParameters,
 }
 
-impl DidDocumentState {
-    /*
-    pub(crate) fn default() -> Self {
-        DidDocumentState {
-            did_log_entries: Vec::new(),
-        }
-    }
-     */
+impl TryFrom<String> for TrustDidWebDidLog {
+    type Error = TrustDidWebError;
 
-    pub fn from(did_log: String) -> Result<Self, TrustDidWebError> {
+    fn try_from(did_log: String) -> Result<Self, Self::Error> {
         // CAUTION Despite parallelization, bear in mind that (according to benchmarks) the overall
         //         performance improvement will be considerable only in case of larger DID logs,
         //         featuring at least as many entries as `std::thread::available_parallelism()` would return.
@@ -329,15 +325,14 @@ impl DidDocumentState {
             return Err(TrustDidWebError::DeserializationFailed(err.to_string()));
         }
 
-        let mut current_params: Option<DidMethodParameters> = None;
+        let mut current_params: Option<TrustDidWebDidMethodParameters> = None;
         let mut prev_entry: Option<Arc<DidLogEntry>> = None;
 
         let mut is_deactivated: bool = false;
         //let now= Local::now();
         let now = Utc::now();
 
-        Ok(DidDocumentState {
-            did_log_entries: did_log
+        let did_log_entries = did_log
                 .lines()
                 .filter(|line| !line.is_empty())
                 .map(|line| {
@@ -382,16 +377,16 @@ impl DidDocumentState {
                         return Err(TrustDidWebError::DeserializationFailed("`versionTime` must be greater then the `versionTime` of the previous entry.".to_string()));
                     }
 
-                    let mut new_params: Option<DidMethodParameters> = None;
+                    let mut new_params: Option<TrustDidWebDidMethodParameters> = None;
                     current_params = match entry[2] {
                         JsonObject(ref obj) => {
                             if !obj.is_empty() {
-                                new_params = Some(DidMethodParameters::from_json(&entry[2].to_string())?);
+                                new_params = Some(TrustDidWebDidMethodParameters::from_json(&entry[2].to_string())?);
                             }
 
                             match (current_params.clone(), new_params.clone()) {
                                 (None, None) => return Err(TrustDidWebError::DeserializationFailed(
-                                    "Missing DID Document parameters.".to_string(),
+                                    "Missing DID method parameters.".to_string(),
                                 )),
                                 (None, Some(new_params)) => {
                                     // this is the first entry, therefore we check for the base configuration
@@ -400,7 +395,7 @@ impl DidDocumentState {
                                     Some(new_params) // from the initial log entry
                                 }
                                 (Some(current_params), None) => {
-                                    new_params = Some(DidMethodParameters::empty());
+                                    new_params = Some(TrustDidWebDidMethodParameters::empty());
                                     Some(current_params.to_owned())
                                 }
                                 (Some(current_params), Some(new_params)) => {
@@ -514,10 +509,23 @@ impl DidDocumentState {
                     prev_entry = Some(Arc::from(current_entry.clone()));
 
                     Ok(current_entry)
-                }).collect::<Result<Vec<DidLogEntry>, TrustDidWebError>>()?
+                }).collect::<Result<Vec<DidLogEntry>, TrustDidWebError>>()?;
+
+        if current_params.is_none() {
+            // unlikely, but still
+            return Err(TrustDidWebError::DeserializationFailed(
+                "Missing DID method parameters.".to_string(),
+            ));
+        }
+
+        Ok(TrustDidWebDidLog {
+            did_method_parameters: current_params.unwrap(), // a panic-safe unwrap call, due to the previous line
+            did_log_entries,
         })
     }
+}
 
+impl TrustDidWebDidLog {
     /// Checks if all entries in the did log are valid (data integrity, versioning etc.)
     pub fn validate_with_scid(
         &self,
@@ -557,7 +565,7 @@ impl DidDocumentState {
                     genesis_entry.verify_version_id_integrity()?;
 
                     // Verify that the SCID is correct
-                    let scid = match genesis_entry.parameters.scid.clone() {
+                    let scid = match genesis_entry.parameters.get_scid_option() {
                         Some(scid_value) => scid_value,
                         None => {
                             return Err(TrustDidWebError::InvalidDataIntegrityProof(
@@ -601,9 +609,13 @@ impl DidDocumentState {
     pub fn validate(&self) -> Result<DidDoc, TrustDidWebError> {
         self.validate_with_scid(None)
     }
+
+    pub fn get_did_method_parameters(&self) -> TrustDidWebDidMethodParameters {
+        self.did_method_parameters.clone()
+    }
 }
 
-impl std::fmt::Display for DidDocumentState {
+impl std::fmt::Display for TrustDidWebDidLog {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let mut log = String::new();
         for entry in &self.did_log_entries {
@@ -805,6 +817,8 @@ pub struct TrustDidWeb {
     did: String,
     did_log: String,
     did_doc: String,
+    did_doc_obj: DidDoc,
+    did_method_parameters: TrustDidWebDidMethodParameters,
 }
 
 impl TrustDidWeb {
@@ -820,39 +834,55 @@ impl TrustDidWeb {
         self.did_doc.clone()
     }
 
-    /// Yet another UniFFI-compliant method.
-    pub fn get_did_doc_obj(&self) -> Result<Arc<DidDoc>, TrustDidWebError> {
-        let did_doc_json = self.did_doc.clone();
-        match json_from_str::<DidDoc>(&did_doc_json) {
-            Ok(doc) => Ok(doc.into()),
-            Err(e) => Err(TrustDidWebError::DeserializationFailed(e.to_string())),
-        }
+    /// Delivers the fully qualified DID document (as [`DidDoc`]) contained within the DID log previously supplied via [`TrustDidWeb::read`] constructor.
+    pub fn get_did_doc_obj(&self) -> DidDoc {
+        self.did_doc_obj.clone()
+    }
+
+    /// The thread-safe version of [`TrustDidWeb::get_did_doc_obj`].
+    ///
+    /// Yet another UniFFI-compliant getter.
+    pub fn get_did_doc_obj_thread_safe(&self) -> Arc<DidDoc> {
+        Arc::new(self.get_did_doc_obj())
+    }
+
+    pub fn get_did_method_parameters_obj(&self) -> TrustDidWebDidMethodParameters {
+        self.did_method_parameters.clone()
+    }
+
+    /// The thread-safe version of [`TrustDidWeb::get_did_method_parameters_obj`].
+    ///
+    /// Yet another UniFFI-compliant getter.
+    pub fn get_did_method_parameters(&self) -> Arc<TrustDidWebDidMethodParameters> {
+        Arc::new(self.get_did_method_parameters_obj())
     }
 
     /// A UniFFI-compliant constructor.
     pub fn read(did_tdw: String, did_log: String) -> Result<Self, TrustDidWebError> {
-        let did_doc_state = DidDocumentState::from(did_log)?;
-        let did = TrustDidWebId::parse_did_tdw(did_tdw.to_owned())
+        let did_log_obj = TrustDidWebDidLog::try_from(did_log)?;
+
+        let did = TrustDidWebId::parse_did_tdw(did_tdw)
             .map_err(|err| TrustDidWebError::InvalidMethodSpecificId(format!("{err}")))?;
-        let scid = did.get_scid();
-        let did_doc_arc = did_doc_state.validate_with_scid(Some(scid.to_owned()))?;
-        let did_doc = did_doc_arc.clone();
-        let did_doc_str = match serde_json::to_string(&did_doc) {
+
+        let did_doc_valid = did_log_obj.validate_with_scid(Some(did.get_scid()))?;
+        let did_doc_str = match serde_json::to_string(&did_doc_valid) {
             Ok(v) => v,
             Err(e) => return Err(TrustDidWebError::SerializationFailed(e.to_string())),
         };
         Ok(Self {
-            did: did_doc.id,
-            did_log: did_doc_state.to_string(), // DidDocumentState implements std::fmt::Display trait
+            did: did_doc_valid.to_owned().id,
+            did_log: did_log_obj.to_string(), // the type implements std::fmt::Display trait
             did_doc: did_doc_str,
+            did_doc_obj: did_doc_valid,
+            did_method_parameters: did_log_obj.get_did_method_parameters(),
         })
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::did_tdw::{DidDocumentState, TrustDidWeb};
-    use crate::did_tdw_parameters::DidMethodParameters;
+    use crate::did_tdw::{TrustDidWeb, TrustDidWebDidLog};
+    use crate::did_tdw_method_parameters::TrustDidWebDidMethodParameters;
     use crate::errors::TrustDidWebErrorKind;
     use crate::test::assert_trust_did_web_error;
     use rstest::rstest;
@@ -862,7 +892,7 @@ mod test {
 
     /// A rather trivial unit testing helper.
     fn build_valid_params_json_string() -> String {
-        json!(DidMethodParameters::for_genesis_did_doc(
+        json!(TrustDidWebDidMethodParameters::for_genesis_did_doc(
             "123".to_string(),
             "123".to_string()
         ))
@@ -891,11 +921,11 @@ mod test {
     // JSON 'value' needs to be a valid did doc
     #[case(format!("[\"1-hash\",\"2012-12-12T12:12:12Z\",{},{{\"value\":\"invalidDoc\"}},5]", build_valid_params_json_string()), "Missing DID document: invalid type")]
     fn test_invalid_did_log(
-        #[case] input_str: String,
+        #[case] did_log: String,
         #[case] error_string: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
         assert_trust_did_web_error(
-            DidDocumentState::from(input_str),
+            TrustDidWebDidLog::try_from(did_log),
             TrustDidWebErrorKind::DeserializationFailed,
             error_string,
         );

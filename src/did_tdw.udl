@@ -11,6 +11,9 @@ typedef enum VerificationType;
 [External="did_sidekicks"]
 typedef struct VerificationMethod;
 
+[External="did_sidekicks"]
+typedef interface DidMethodParameter;
+
 // Returned by `TrustDidWeb`'s method get_did_doc_obj
 [External="did_sidekicks"]
 typedef interface DidDoc;
@@ -32,6 +35,15 @@ enum TrustDidWebIdResolutionError {
     "MethodNotSupported",
     /// Invalid method-specific identifier.
     "InvalidMethodSpecificId"
+};
+
+interface TrustDidWebDidMethodParameters {
+    /// Returns the SCID part from the supplied DID.
+    string get_scid();
+    ///
+    sequence<string> get_update_keys();
+    ///
+    boolean is_deactivated();
 };
 
 /// Represents a TDW DID, as specified at https://identity.foundation/trustdidweb/#method-specific-identifier:
@@ -78,8 +90,11 @@ interface TrustDidWeb {
     string get_did();
     string get_did_log();
     string get_did_doc();
-    [Throws=TrustDidWebError]
-    DidDoc get_did_doc_obj();
+    ///
+    TrustDidWebDidMethodParameters get_did_method_parameters();
+    /// Delivers the fully qualified DID document (as `DidDoc`) contained within the DID log previously resolved in the constructor
+    ///[Throws=TrustDdidWebError]
+    DidDoc get_did_doc_obj_thread_safe();
 };
 
 /// W.r.t. corresponding specification version available at https://identity.foundation/didwebvh/v0.3
