@@ -7,6 +7,8 @@ use chrono::serde::ts_seconds;
 use chrono::{DateTime, SecondsFormat, Utc};
 use did_sidekicks::did_doc::*;
 use did_sidekicks::did_jsonschema::{DidLogEntryJsonSchema, DidLogEntryValidator};
+use did_sidekicks::did_method_parameters::DidMethodParameter;
+use did_sidekicks::did_resolver::DidResolver;
 use did_sidekicks::ed25519::*;
 use did_sidekicks::jcs_sha256_hasher::JcsSha256Hasher;
 use did_sidekicks::vc_data_integrity::*;
@@ -19,6 +21,7 @@ use serde_json::{
     from_str as json_from_str, json, to_string as json_to_string, Value as JsonValue,
 };
 use std::cmp::PartialEq;
+use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
 use url::Url;
 use url_escape;
@@ -835,7 +838,7 @@ impl TrustDidWeb {
     }
 
     /// Delivers the fully qualified DID document (as [`DidDoc`]) contained within the DID log previously supplied via [`TrustDidWeb::read`] constructor.
-    pub fn get_did_doc_obj(&self) -> DidDoc {
+    fn get_did_doc_obj(&self) -> DidDoc {
         self.did_doc_obj.clone()
     }
 
@@ -846,7 +849,7 @@ impl TrustDidWeb {
         Arc::new(self.get_did_doc_obj())
     }
 
-    pub fn get_did_method_parameters_obj(&self) -> TrustDidWebDidMethodParameters {
+    fn get_did_method_parameters_obj(&self) -> TrustDidWebDidMethodParameters {
         self.did_method_parameters.clone()
     }
 
@@ -876,6 +879,24 @@ impl TrustDidWeb {
             did_doc_obj: did_doc_valid,
             did_method_parameters: did_log_obj.get_did_method_parameters(),
         })
+    }
+}
+
+impl DidResolver for TrustDidWeb {
+    type Error = TrustDidWebError;
+
+    fn resolve(did: String, did_log: String) -> Result<Self, Self::Error> {
+        TrustDidWeb::read(did, did_log)
+    }
+
+    fn get_did_doc_obj(&self) -> DidDoc {
+        self.get_did_doc_obj()
+    }
+
+    fn get_did_method_parameters_map(
+        &self,
+    ) -> impl TryInto<HashMap<String, Arc<DidMethodParameter>>> {
+        self.get_did_method_parameters_obj()
     }
 }
 
