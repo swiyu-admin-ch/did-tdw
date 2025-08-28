@@ -15,6 +15,7 @@ pub mod errors;
 
 // CAUTION All structs required by UniFFI bindings generator (declared in UDL) MUST also be "used" here
 use did_sidekicks::did_doc::*;
+use did_sidekicks::errors::*;
 //use did_sidekicks::ed25519::*;
 //use did_sidekicks::did_jsonschema::*;
 //use did_sidekicks::vc_data_integrity;
@@ -41,6 +42,7 @@ mod test {
     use serde_json::{json, Value as JsonValue};
     use std::path::Path;
     use std::{fs, vec};
+    use did_sidekicks::errors::{DidResolverError, DidResolverErrorKind};
 
     #[fixture]
     fn unique_base_url() -> String {
@@ -185,10 +187,10 @@ mod test {
         Ok(())
     }
 
-    /// A rather trivial assertion helper around TrustDidWebError.
+    /// A rather trivial assertion helper around DidResolverError.
     pub fn assert_trust_did_web_error<T>(
-        res: Result<T, TrustDidWebError>,
-        expected_kind: TrustDidWebErrorKind,
+        res: Result<T, DidResolverError>,
+        expected_kind: DidResolverErrorKind,
         error_contains: &str,
     ) {
         assert!(res.is_err());

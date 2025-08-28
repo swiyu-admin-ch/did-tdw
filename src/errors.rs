@@ -2,6 +2,8 @@
 
 //use std::cmp::PartialEq;
 
+use did_sidekicks::errors::{DidResolverError, DidResolverErrorKind};
+
 /// Yet another UniFFI-compliant error.
 ///
 /// Resembles ssi::dids::resolution::Error
@@ -43,6 +45,7 @@ pub enum TrustDidWebIdResolutionErrorKind {
 pub enum TrustDidWebError {
     /// DID method is not supported by this resolver
     #[error("DID method `{0}` not supported")]
+    #[deprecated(note = "as redundant")]
     MethodNotSupported(String),
     /// Invalid method-specific identifier
     #[error("invalid method specific identifier: {0}")]
@@ -55,6 +58,7 @@ pub enum TrustDidWebError {
     )]
     DeserializationFailed(String),
     /// Invalid (or not yet supported) operation against DID doc
+    #[deprecated(note = "as redundant")]
     #[error("invalid (or not yet supported) operation against DID doc: {0}")]
     InvalidOperation(String),
     /// Invalid DID parameter
@@ -84,15 +88,42 @@ impl TrustDidWebError {
     }
 }
 
+impl From<DidResolverError> for TrustDidWebError {
+    fn from(value: DidResolverError) -> Self {
+        match value.kind() {
+            DidResolverErrorKind::InvalidMethodSpecificId => {
+                TrustDidWebError::InvalidMethodSpecificId(format!("{value}"))
+            }
+            DidResolverErrorKind::SerializationFailed => {
+                TrustDidWebError::SerializationFailed(format!("{value}"))
+            }
+            DidResolverErrorKind::DeserializationFailed => {
+                TrustDidWebError::DeserializationFailed(format!("{value}"))
+            }
+            DidResolverErrorKind::InvalidDidParameter => {
+                TrustDidWebError::InvalidDidParameter(format!("{value}"))
+            }
+            DidResolverErrorKind::InvalidDidDocument => {
+                TrustDidWebError::InvalidDidDocument(format!("{value}"))
+            }
+            DidResolverErrorKind::InvalidIntegrityProof => {
+                TrustDidWebError::InvalidDataIntegrityProof(format!("{value}"))
+            }
+        }
+    }
+}
+
 /// TrustDidWebError kind.
 ///
 /// Each [`TrustDidWebError`] has a kind provided by the [`TrustDidWebErrorKind::kind`] method.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TrustDidWebErrorKind {
+    #[deprecated(note = "as redundant")]
     MethodNotSupported,
     InvalidMethodSpecificId,
     SerializationFailed,
     DeserializationFailed,
+    #[deprecated(note = "as redundant")]
     InvalidOperation,
     InvalidDidParameter,
     InvalidDidDocument,
