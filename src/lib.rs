@@ -9,39 +9,37 @@
 extern crate core;
 
 pub mod did_tdw;
-pub mod did_tdw_parameters;
-pub mod errors;
 pub mod did_tdw_jsonschema;
+pub mod did_tdw_method_parameters;
+pub mod errors;
 
 // CAUTION All structs required by UniFFI bindings generator (declared in UDL) MUST also be "used" here
-use did_tdw::*;
 use did_sidekicks::did_doc::*;
-use did_sidekicks::ed25519::*;
-use did_sidekicks::did_jsonschema::*;
-//use did_sidekicks::vc_data_integrity;
-use errors::*;
+use did_sidekicks::errors::*;
+use did_tdw::*;
 use did_tdw_jsonschema::*;
+use did_tdw_method_parameters::*;
+use errors::*;
 
 uniffi::include_scaffolding!("did_tdw");
 
 #[cfg(test)]
 mod test {
     use super::did_tdw::*;
+    use crate::errors::*;
+    use chrono::DateTime;
+    use core::panic;
     use did_sidekicks::did_doc::*;
     use did_sidekicks::ed25519::*;
     use did_sidekicks::jcs_sha256_hasher::*;
-    use did_sidekicks::multibase::*;
-    use crate::errors::*;
     use did_sidekicks::vc_data_integrity::*;
-    use chrono::DateTime;
-    use core::panic;
-    use hex::encode as hex_encode;
     use rand::distributions::Alphanumeric;
     use rand::Rng;
     use rstest::{fixture, rstest};
     use serde_json::{json, Value as JsonValue};
     use std::path::Path;
     use std::{fs, vec};
+    use did_sidekicks::errors::{DidResolverError, DidResolverErrorKind};
 
     #[fixture]
     fn unique_base_url() -> String {
@@ -186,10 +184,10 @@ mod test {
         Ok(())
     }
 
-    /// A rather trivial assertion helper around TrustDidWebError.
+    /// A rather trivial assertion helper around DidResolverError.
     pub fn assert_trust_did_web_error<T>(
-        res: Result<T, TrustDidWebError>,
-        expected_kind: TrustDidWebErrorKind,
+        res: Result<T, DidResolverError>,
+        expected_kind: DidResolverErrorKind,
         error_contains: &str,
     ) {
         assert!(res.is_err());
@@ -292,13 +290,15 @@ mod test {
 
     #[rstest]
     #[case("test_data/generated_by_didtoolbox_java/v010_did.jsonl")]
-    #[case("test_data/generated_by_didtoolbox_java/v_0_3_eid_conform/did_doc_without_controller.jsonl")]
+    #[case(
+        "test_data/generated_by_didtoolbox_java/v_0_3_eid_conform/did_doc_without_controller.jsonl"
+    )]
     //#[case("test_data/generated_by_tdw_js/unique_update_keys.jsonl")]
     fn test_generate_version_id(
         #[case] did_log_raw_filepath: String,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let did_log_raw = fs::read_to_string(Path::new(&did_log_raw_filepath))?;
-        let did_document = DidDocumentState::from(did_log_raw)?;
+        let did_document = TrustDidWebDidLog::try_from(did_log_raw)?;
         for did_log in did_document.did_log_entries {
             let generated_version_id = did_log.build_version_id()?;
             assert!(generated_version_id == did_log.version_id);
@@ -307,7 +307,7 @@ mod test {
     }
 
     #[rstest]
-    /* TODO cleanup and add more test cases 
+    /* TODO cleanup and add more test cases
     #[case(
         "test_data/generated_by_tdw_js/single_update_key.jsonl",
         "did:tdw:QmXjp5qhSEvm8oXip43cDX62hZhHZdAMYv7Magy1tkffSz:example.com"
