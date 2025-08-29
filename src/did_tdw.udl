@@ -2,18 +2,6 @@
 namespace did_tdw {
 };
 
-[External="did_sidekicks"]
-typedef struct Jwk;
-
-[External="did_sidekicks"]
-typedef enum VerificationType;
-
-[External="did_sidekicks"]
-typedef struct VerificationMethod;
-
-[External="did_sidekicks"]
-typedef interface DidMethodParameter;
-
 // Thrown by `TrustDidWeb`'s constructor `resolve`
 [External="did_sidekicks"]
 typedef enum DidResolverError;
@@ -21,15 +9,6 @@ typedef enum DidResolverError;
 // Returned by `TrustDidWeb`'s method `get_did_doc_obj`
 [External="did_sidekicks"]
 typedef interface DidDoc;
-
-[External="did_sidekicks"]
-typedef trait DidLogEntryJsonSchema;
-
-[External="did_sidekicks"]
-typedef enum DidLogEntryValidatorError;
-
-[External="did_sidekicks"]
-typedef struct DidLogEntryValidator;
 
 /// The error accompanying `TrustDidWebId`.
 /// It might occur while calling TrustDidWebId methods.
@@ -71,7 +50,7 @@ interface TrustDidWebId {
 [Error]
 enum TrustDidWebError {
     /// DID method is not supported by this resolver.
-    ///        
+    ///
     /// @deprecated as redundant
     "MethodNotSupported",
     /// Invalid method-specific identifier.
@@ -81,8 +60,8 @@ enum TrustDidWebError {
     /// The supplied did doc is invalid or contains an argument which isn't part of the did specification/recommendation.
     "DeserializationFailed",
     /// Invalid (or not yet supported) operation against DID doc.
-    ///        
-    /// @deprecated as redundant        
+    ///
+    /// @deprecated as redundant
     "InvalidOperation",
     /// Invalid DID parameter.
     "InvalidDidParameter",
@@ -93,10 +72,18 @@ enum TrustDidWebError {
 };
 
 interface TrustDidWeb {
-    /// @deprecated        
+    /// The (deprecated) constructor of `TrustDidWeb` implementing
+    /// "Read (Resolve) DID method operation" (for a `did:webvh` DID), as specified by https://identity.foundation/didwebvh/v1.0/#read-resolve
+    ///
+    /// In case of error/exception, all the detailed information required to narrow down the root cause are available as well.
+    ///
+    /// @deprecated use the more potent `resolve` constructor instead
     [Name=read, Throws=TrustDidWebError]
     constructor(string did_tdw, string did_log);
+    /// The constructor of `TrustDidWeb` implementing
+    /// "Read (Resolve) DID method operation" (for a `did:webvh` DID), as specified by https://identity.foundation/didwebvh/v1.0/#read-resolve
     ///
+    /// In case of error/exception, all the detailed information required to narrow down the root cause are available as well.
     [Name=resolve, Throws=DidResolverError]
     constructor(string did_tdw, string did_log);
     string get_did();
