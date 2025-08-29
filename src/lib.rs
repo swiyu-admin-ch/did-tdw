@@ -9,63 +9,37 @@
 extern crate core;
 
 pub mod did_tdw;
-pub mod did_tdw_parameters;
-pub mod didtoolbox;
-pub mod ed25519;
-pub mod errors;
-pub mod jcs_sha256_hasher;
-pub mod multibase;
-pub mod vc_data_integrity;
-pub mod custom_jsonschema_keywords;
 pub mod did_tdw_jsonschema;
+pub mod did_tdw_method_parameters;
+pub mod errors;
 
 // CAUTION All structs required by UniFFI bindings generator (declared in UDL) MUST also be "used" here
+use did_sidekicks::did_doc::*;
+use did_sidekicks::errors::*;
 use did_tdw::*;
-use didtoolbox::*;
-use ed25519::*;
-use errors::*;
 use did_tdw_jsonschema::*;
+use did_tdw_method_parameters::*;
+use errors::*;
 
-uniffi::include_scaffolding!("didtoolbox");
+uniffi::include_scaffolding!("did_tdw");
 
 #[cfg(test)]
 mod test {
     use super::did_tdw::*;
-    use super::didtoolbox::*;
-    use super::ed25519::*;
-    use super::jcs_sha256_hasher::*;
-    use super::multibase::*;
     use crate::errors::*;
-    use crate::vc_data_integrity::*;
     use chrono::DateTime;
     use core::panic;
-    use hex::encode as hex_encode;
+    use did_sidekicks::did_doc::*;
+    use did_sidekicks::ed25519::*;
+    use did_sidekicks::jcs_sha256_hasher::*;
+    use did_sidekicks::vc_data_integrity::*;
     use rand::distributions::Alphanumeric;
     use rand::Rng;
     use rstest::{fixture, rstest};
     use serde_json::{json, Value as JsonValue};
     use std::path::Path;
     use std::{fs, vec};
-    //
-    // INFO: To run tests in this module, it is NO NEED to start the 'did_server'
-    //       located in the folder with the same name anymore!!!
-    //
-    // However, if still interested in using it (as kind of playground), here is a short how-to manual.
-    //
-    // For instance on macOS, a Linux container may be started by running following commands:
-    // - install podman:              brew update && brew install podman
-    // - to start a container:        podman run -it --rm -v $(pwd):$(pwd):Z -w $(pwd) -p 8000:8000 rust
-    // - to setup system packages:    apt-get update && apt-get install python3-fastapi jq lsof -y
-    // - to generate bindings:        source python-build.sh
-    // - to boot up the test-server:  python3 did_server/main.py &
-    //                                ("lsof -i:8000" should produce some output)
-    // - to (smoke) test bindings:    python3 did_server/playground.py | tail -2 | jq
-    //                                Output:
-    //                                INFO:     127.0.0.1:55058 - "POST /123456789/did.jsonl HTTP/1.1" 201 Created
-    //                                INFO:     127.0.0.1:55068 - "GET /123456789/did.jsonl HTTP/1.1" 200 OK
-    // - and the last, but not least: cargo test --color=always --profile test --package didtoolbox --lib test --no-fail-fast --config env.RUSTC_BOOTSTRAP=\"1\" -- --format=json -Z unstable-options --show-output
-    // - press CTRL+D to exit container
-    //
+    use did_sidekicks::errors::{DidResolverError, DidResolverErrorKind};
 
     #[fixture]
     fn unique_base_url() -> String {
@@ -177,64 +151,6 @@ mod test {
     }
 
     #[rstest]
-    fn test_multibase_conversion() -> Result<(), Box<dyn std::error::Error>> {
-        let multibase = MultibaseEncoderDecoder::default();
-        let encoded = multibase.encode_base58btc("helloworld".as_bytes()); // == "z6sBRWyteSSzHrs"
-
-        let mut buff = vec![0; 16];
-        multibase.decode_base58_onto(encoded.as_str(), &mut buff)?;
-        let decoded = String::from_utf8_lossy(&buff).to_string();
-        assert!(decoded.starts_with("helloworld"));
-        //assert_eq!(decoded, "helloworld");
-        Ok(())
-    }
-
-    #[rstest]
-    fn test_multibase_conversion_invalid_multibase() {
-        let multibase = MultibaseEncoderDecoder::default();
-        let encoded = multibase.encode_base58btc("helloworld".as_bytes()); // == "z6sBRWyteSSzHrs"
-
-        // Now, to induce error, just get rid of the multibase code (prefix char 'z')
-        let encoded_without_multibase = encoded.chars().skip(1).collect::<String>();
-        let mut buff = vec![0; 16];
-        let res = multibase.decode_base58_onto(encoded_without_multibase.as_str(), &mut buff);
-        assert!(res.is_err());
-        let err = res.unwrap_err(); // panic-safe unwrap call (see the previous line)
-        assert_eq!(err.kind(), TrustDidWebErrorKind::DeserializationFailed);
-        assert!(err
-            .to_string()
-            .contains("Invalid multibase algorithm identifier 'Base58btc'"));
-    }
-
-    #[rstest]
-    fn test_multibase_conversion_buffer_too_small() {
-        let multibase = MultibaseEncoderDecoder::default();
-        let encoded = multibase.encode_base58btc("helloworld".as_bytes()); // == "z6sBRWyteSSzHrs"
-
-        // all it takes to reproduce the behaviour
-        let mut buff = vec![0; 8]; // empirical size for "helloworld" (encoded)
-
-        let res = multibase.decode_base58_onto(encoded.as_str(), &mut buff);
-        assert!(res.is_err());
-        let err = res.unwrap_err(); // panic-safe unwrap call (see the previous line)
-        assert_eq!(err.kind(), TrustDidWebErrorKind::DeserializationFailed);
-        assert!(err
-            .to_string()
-            .contains("buffer provided to decode base58 encoded string into was too small"));
-    }
-
-    #[rstest]
-    #[case(
-        // Example taken from https://multiformats.io/multihash/#sha2-256---256-bits-aka-sha256
-        "Merkle–Damgård",
-        "122041dd7b6443542e75701aa98a0c235951a28a0d851b11564d20022ab11d2589a8"
-    )]
-    fn test_encode_multihash_sha256(#[case] input: String, #[case] expected: String) {
-        let hash = hex_encode(JcsSha256Hasher::default().encode_multihash(input));
-        assert_eq!(hash, expected);
-    }
-
-    #[rstest]
     fn test_key_pair_multibase_conversion(
         ed25519_key_pair: &Ed25519KeyPair, // fixture
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -268,10 +184,10 @@ mod test {
         Ok(())
     }
 
-    /// A rather trivial assertion helper around TrustDidWebError.
+    /// A rather trivial assertion helper around DidResolverError.
     pub fn assert_trust_did_web_error<T>(
-        res: Result<T, TrustDidWebError>,
-        expected_kind: TrustDidWebErrorKind,
+        res: Result<T, DidResolverError>,
+        expected_kind: DidResolverErrorKind,
         error_contains: &str,
     ) {
         assert!(res.is_err());
@@ -329,7 +245,7 @@ mod test {
         );
 
         // From https://www.w3.org/TR/vc-di-eddsa/#example-private-and-public-keys-for-signature-1
-        let suite = EddsaJcs2022Cryptosuite {
+        let suite = did_sidekicks::vc_data_integrity::EddsaJcs2022Cryptosuite {
             verifying_key: Some(Ed25519VerifyingKey::from_multibase(
                 "z6MkrJVnaZkeFzdQyMZu1cgjg7k1pZZ6pvBQ7XJPt4swbTQ2",
             )?),
@@ -374,13 +290,15 @@ mod test {
 
     #[rstest]
     #[case("test_data/generated_by_didtoolbox_java/v010_did.jsonl")]
-    #[case("test_data/generated_by_didtoolbox_java/v_0_3_eid_conform/did_doc_without_controller.jsonl")]
+    #[case(
+        "test_data/generated_by_didtoolbox_java/v_0_3_eid_conform/did_doc_without_controller.jsonl"
+    )]
     //#[case("test_data/generated_by_tdw_js/unique_update_keys.jsonl")]
     fn test_generate_version_id(
         #[case] did_log_raw_filepath: String,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let did_log_raw = fs::read_to_string(Path::new(&did_log_raw_filepath))?;
-        let did_document = DidDocumentState::from(did_log_raw)?;
+        let did_document = TrustDidWebDidLog::try_from(did_log_raw)?;
         for did_log in did_document.did_log_entries {
             let generated_version_id = did_log.build_version_id()?;
             assert!(generated_version_id == did_log.version_id);
@@ -389,7 +307,7 @@ mod test {
     }
 
     #[rstest]
-    /* TODO cleanup and add more test cases 
+    /* TODO cleanup and add more test cases
     #[case(
         "test_data/generated_by_tdw_js/single_update_key.jsonl",
         "did:tdw:QmXjp5qhSEvm8oXip43cDX62hZhHZdAMYv7Magy1tkffSz:example.com"
@@ -403,6 +321,38 @@ mod test {
         "did:tdw:QmdSU7F2rF8r4m6GZK7Evi2tthfDDxhw3NppU8pJMbd2hB:example.com"
     )]
     */
+    #[case(
+        "test_data/generated_by_didtoolbox_java/legacy/did-1.0.0-RC1.jsonl",
+        "did:tdw:QmPEZPhDFR4nEYSFK5bMnvECqdpf1tPTPJuWs9QrMjCumw:identifier-reg.trust-infra.swiyu-int.admin.ch:api:v1:did:9a5559f0-b81c-4368-a170-e7b4ae424527"
+    )]
+    #[case(
+        "test_data/generated_by_didtoolbox_java/legacy/did-1.0.0.jsonl",
+        "did:tdw:Qmb95hd5nGZvJY3q6mGcmZrLTNYMmzJYuMx94VNFb27oi9:identifier-reg.trust-infra.swiyu-int.admin.ch:api:v1:did:18fa7c77-9dd1-4e20-a147-fb1bec146085"
+    )]
+    #[case(
+        "test_data/generated_by_didtoolbox_java/legacy/did-1.1.0.jsonl",
+        "did:tdw:QmVZsmZqj1pGqqdzDeKLwBWZXo5aDucFsYddw9fKPb7e5Z:identifier-reg.trust-infra.swiyu-int.admin.ch:api:v1:did:18fa7c77-9dd1-4e20-a147-fb1bec146085"
+    )]
+    #[case(
+        "test_data/generated_by_didtoolbox_java/legacy/did-1.2.0.jsonl",
+        "did:tdw:QmX4MSeKo17fvrZQbkHSB4BfkEtJXiGhnbnSAu6oCMYtub:identifier-reg.trust-infra.swiyu-int.admin.ch:api:v1:did:18fa7c77-9dd1-4e20-a147-fb1bec146085"
+    )]
+    #[case(
+        "test_data/generated_by_didtoolbox_java/legacy/did-1.3.0.jsonl",
+        "did:tdw:Qmdjf4BZUtYnNKWbL5Lj9MqTeqxq5UQBbgU3p5wriwTzDV:identifier-reg.trust-infra.swiyu-int.admin.ch:api:v1:did:18fa7c77-9dd1-4e20-a147-fb1bec146085"
+    )]
+    #[case(
+        "test_data/generated_by_didtoolbox_java/legacy/did-1.3.1.jsonl",
+        "did:tdw:QmWroVHz78FM6ugJ6MkaD4yu2ihkKmWFiKDcDPXu1AeS1d:identifier-reg.trust-infra.swiyu-int.admin.ch:api:v1:did:18fa7c77-9dd1-4e20-a147-fb1bec146085"
+    )]
+    #[case(
+        "test_data/generated_by_didtoolbox_java/legacy/did-1.4.0.jsonl",
+        "did:tdw:QmSTru6WjboQ24pVdK21AuX4rV6CEqQSjFQKANaXwGM6wz:identifier-reg.trust-infra.swiyu-int.admin.ch:api:v1:did:18fa7c77-9dd1-4e20-a147-fb1bec146085"
+    )]
+    #[case(
+        "test_data/generated_by_didtoolbox_java/legacy/did-1.4.1.jsonl",
+        "did:tdw:QmU8WbF9dMzTMU1snugNConzA4tHvPaXRqzyjXn77pUY8G:identifier-reg.trust-infra.swiyu-int.admin.ch:api:v1:did:18fa7c77-9dd1-4e20-a147-fb1bec146085"
+    )]
     #[case(
         "test_data/generated_by_didtoolbox_java/v_0_3_eid_conform/did_doc_without_controller.jsonl",
         "did:tdw:QmZf4Pb1GoPdYaZBF3Sc1nVspXef4qc816C7eBzzuXMoGk:domain.com%3A8080:path1:path2"

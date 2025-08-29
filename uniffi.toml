@@ -1,4 +1,5 @@
 [bindings.kotlin]
 android = true
 android_cleaner = true
+# CAUTION Due to backward compatibility with its predecessor
 package_name = "ch.admin.eid.didresolver.didtoolbox"
