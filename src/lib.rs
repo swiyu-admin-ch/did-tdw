@@ -31,6 +31,7 @@ mod test {
     use core::panic;
     use did_sidekicks::did_doc::*;
     use did_sidekicks::ed25519::*;
+    use did_sidekicks::errors::{DidResolverError, DidResolverErrorKind};
     use did_sidekicks::jcs_sha256_hasher::*;
     use did_sidekicks::vc_data_integrity::*;
     use rand::distributions::Alphanumeric;
@@ -39,7 +40,6 @@ mod test {
     use serde_json::{json, Value as JsonValue};
     use std::path::Path;
     use std::{fs, vec};
-    use did_sidekicks::errors::{DidResolverError, DidResolverErrorKind};
 
     #[fixture]
     fn unique_base_url() -> String {
@@ -70,6 +70,38 @@ mod test {
     #[case(
         "did:tdw:{SCID}:example.com:dids:issuer",
         "https://example.com/dids/issuer/did.jsonl"
+    )]
+    #[case(
+        "did:tdw:{SCID}:example.com%3A3000:dids:issuer",
+        "https://example.com:3000/dids/issuer/did.jsonl"
+    )]
+    #[case( // internationalized domain
+        "did:tdw:QMySCID:jp納豆.例.jp:用户",
+        "https://xn--jp-cd2fp15c.xn--fsq.jp/%E7%94%A8%E6%88%B7/did.jsonl"
+    )]
+    #[case( // path with null
+        "did:tdw:QMySCID:example.com:\0:test",
+        "https://example.com/%00/test/did.jsonl"
+    )]
+    #[case( // path with accents
+        "did:tdw:QMySCID:example.com:ar̷̠̗̠͙̜̘͚̼͖̗̯̥̥͙̜͊̈́͆́̽̆̔̏̓͌͑t",
+        "https://example.com/ar%CC%B7%CC%A0%CC%97%CC%A0%CD%99%CC%9C%CC%98%CD%9A%CC%BC%CD%96%CC%97%CC%AF%CC%A5%CC%A5%CD%99%CC%9C%CD%8A%CC%88%CC%81%CD%86%CC%81%CC%BD%CC%86%CC%94%CC%8F%CC%93%CD%8C%CD%91t/did.jsonl"
+    )]
+    #[case( // domain accents
+        "did:tdw:QMySCID:ar̷̠̗̠͙̜̘͚̼͖̗̯̥̥͙̜͊̈́͆́̽̆̔̏̓͌͑t.com",
+        "https://xn--art-ldca4al3dubi2aam9cc3db7ga2r5fte5a8stdvcxh5erdiy.com/.well-known/did.jsonl"
+    )]
+    #[case( // domain with emoji
+        "did:tdw:QMySCID:I❤You.com",
+        "https://xn--iyou-lw4b.com/.well-known/did.jsonl"
+    )]
+    #[case(
+        "did:tdw:QMySCID:example%2Ecom",
+        "https://example.com/.well-known/did.jsonl"
+    )]
+    #[case(
+        "did:tdw:{SCID}:ampl.com%3A", // port after ':' is optional
+        "https://ampl.com/.well-known/did.jsonl"
     )]
     #[case(
         "did:tdw:{SCID}:example.com%3A3000:dids:issuer",
@@ -110,6 +142,26 @@ mod test {
         let tdw = TrustDidWebId::parse_did_tdw(tdw).unwrap();
         let resolved_url = tdw.get_url();
         assert_eq!(resolved_url, url)
+    }
+
+    #[rstest]
+    #[case("did:webvh:QMySCID::test")]
+    #[case("did:webvh:QMySCID:.")]
+    #[case("did:webvh:QMySCID:\0:test")]
+    #[case("did:webvh:QMySCID:example\0:test")]
+    #[case("did:webvh:QMySCID:example.")]
+    #[case("did:webvh:QMySCID:my\0invalid.url:test")]
+    #[case("did:webvh:QMySCID:0.0.0.256:test")]
+    #[case("did:webvh:QMySCID:ampl.com%3B")]
+    #[case("did:webvh:QMySCID:ampl.com%2Ftest")]
+    #[case("did:webvh:{SCID}:[0:0::1]")] // ip v6 address
+    fn test_webvh_to_url_conversion_invalid(#[case] tdw: String) {
+        let res = TrustDidWebId::parse_did_tdw(tdw);
+        assert!(
+            res.is_err(),
+            "URL '{}' should be invalid",
+            res.unwrap().get_url()
+        );
     }
 
     #[rstest]
@@ -361,14 +413,14 @@ mod test {
         "test_data/generated_by_didtoolbox_java/v400_did.jsonl",
         "did:tdw:QmPsui8ffosRTxUBP8vJoejauqEUGvhmWe77BNo1StgLk7:identifier-reg.trust-infra.swiyu-int.admin.ch:api:v1:did:18fa7c77-9dd1-4e20-a147-fb1bec146085"
     )]
-    fn test_read_did_tdw(
+    fn test_resolve_did_tdw(
         #[case] did_log_raw_filepath: String,
         #[case] did_url: String,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let did_log_raw = fs::read_to_string(Path::new(&did_log_raw_filepath))?;
 
         // Read the newly did doc
-        let tdw_v1 = TrustDidWeb::read(did_url.clone(), did_log_raw)?;
+        let tdw_v1 = TrustDidWeb::resolve(did_url.clone(), did_log_raw)?;
         let did_doc_v1: JsonValue = serde_json::from_str(&tdw_v1.get_did_doc())?;
         let did_doc_obj_v1 = DidDoc::from_json(&tdw_v1.get_did_doc())?;
 
