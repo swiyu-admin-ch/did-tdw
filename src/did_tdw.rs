@@ -319,6 +319,7 @@ pub struct TrustDidWebDidLog {
 impl TryFrom<String> for TrustDidWebDidLog {
     type Error = DidResolverError;
 
+    #[inline]
     fn try_from(did_log: String) -> Result<Self, Self::Error> {
         // CAUTION Despite parallelization, bear in mind that (according to benchmarks) the overall
         //         performance improvement will be considerable only in case of larger DID logs,
@@ -1038,7 +1039,7 @@ mod test {
             err.to_string().contains(&err_contains_pattern),
             "err message should contain '{}', but got '{}'",
             err_contains_pattern,
-            err.to_string()
+            err
         );
     }
 }
