@@ -33,9 +33,9 @@ mod test {
     use rand::distributions::Alphanumeric;
     use rand::Rng as _;
     use rstest::{fixture, rstest};
-    use serde_json::{json, Value as JsonValue};
+    use serde_json::{Value as JsonValue};
     use std::path::Path;
-    use std::{fs, vec};
+    use std::fs;
 
     #[fixture]
     fn unique_base_url() -> String {
