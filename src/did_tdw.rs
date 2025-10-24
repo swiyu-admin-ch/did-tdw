@@ -29,6 +29,12 @@ use url_escape;
 
 pub const SCID_PLACEHOLDER: &str = "{SCID}";
 
+/// Regex to check if a domain follows the assumption described in https://www.rfc-editor.org/rfc/rfc952.html
+/// Allowed are lowercase letters (a-z), digits (0-9) dash (-) and period (.). Periods are only allowed to
+/// delimit components.
+static DOMAIN_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[\-a-z0-9]+(\.[\-a-z0-9]+)*$").unwrap());
+
 /// Entry in a did log file as shown here
 /// https://identity.foundation/trustdidweb/#term:did-log-entry
 /// See https://github.com.mcas.ms/decentralized-identity/trustdidweb/blob/63e21b69d84f7d9344f4e6ef4809e7823975c965/spec/specification.md
@@ -313,6 +319,7 @@ pub struct TrustDidWebDidLog {
 impl TryFrom<String> for TrustDidWebDidLog {
     type Error = DidResolverError;
 
+    #[inline]
     fn try_from(did_log: String) -> Result<Self, Self::Error> {
         // CAUTION Despite parallelization, bear in mind that (according to benchmarks) the overall
         //         performance improvement will be considerable only in case of larger DID logs,
@@ -723,6 +730,17 @@ impl TryFrom<String> for TrustDidWebId {
             }
         };
 
+        // Verify that the host is a valid domain.
+        // Special characters were encoded by `Url::parse`.
+        // URL without domain, that instead use an ip address are already validated in step 5
+        if let url::Origin::Tuple(_, url::Host::Domain(domain), _) = url.origin() {
+            if DOMAIN_REGEX.captures(domain.as_str()).is_none() {
+                return Err(TrustDidWebIdResolutionError::InvalidMethodSpecificId(
+                    "Domain of provided DID is invalid".to_string(),
+                ));
+            }
+        }
+
         let has_no_url_path = url.path().is_empty() || url.path() == "/";
         // get an object with methods to manipulate this URL’s path segments
         match url.path_segments_mut() {
@@ -1021,7 +1039,7 @@ mod test {
             err.to_string().contains(&err_contains_pattern),
             "err message should contain '{}', but got '{}'",
             err_contains_pattern,
-            err.to_string()
+            err
         );
     }
 }

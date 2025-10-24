@@ -320,7 +320,7 @@ impl TryInto<HashMap<String, Arc<DidMethodParameter>>> for TrustDidWebDidMethodP
 
         // This property MUST appear in the first log entry and MAY appear in subsequent entries
         let update_keys = match DidMethodParameter::new_string_array_from_option(
-            "update_keys",
+            "updateKeys",
             params.update_keys,
         ) {
             Ok(v) => v,
@@ -330,7 +330,8 @@ impl TryInto<HashMap<String, Arc<DidMethodParameter>>> for TrustDidWebDidMethodP
         Ok(HashMap::from([
             (method.get_name(), Arc::new(method)),
             (scid.get_name(), Arc::new(scid)),
-            (update_keys.get_name(), Arc::new(update_keys)),
+            //(update_keys.get_name(), Arc::new(update_keys)),
+            ("updateKeys".to_owned(), Arc::new(update_keys)),
             // Defaults to false if omitted in the first entry
             (
                 "portable".to_string(),
@@ -632,8 +633,8 @@ mod test {
         assert!(method.get_string_value().is_some());
         assert_eq!("scid", scid.get_string_value().unwrap());
 
-        assert!(param_map.contains_key("update_keys"));
-        let update_keys_option = param_map.get("update_keys");
+        assert!(param_map.contains_key("updateKeys"));
+        let update_keys_option = param_map.get("updateKeys");
         assert!(update_keys_option.is_some());
         let update_keys = update_keys_option.unwrap();
         assert!(update_keys.is_array());
