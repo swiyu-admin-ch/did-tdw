@@ -44,7 +44,7 @@ pub fn criterion_benchmark_did_tdw(c: &mut Criterion) {
     ;
 
     for i in inputs {
-        group.bench_function(BenchmarkId::new("TrustDidWeb_read", i), |b| {
+        group.bench_function(BenchmarkId::new("TrustDidWeb_resolve", i), |b| {
             b.iter(|| {
                 let did_log_raw_filepath = format!{"test_data/generated_by_didtoolbox_java/v{:03}_did.jsonl", i};
                 let did_url =
@@ -52,7 +52,7 @@ pub fn criterion_benchmark_did_tdw(c: &mut Criterion) {
 
                 let did_log_raw = fs::read_to_string(Path::new(&did_log_raw_filepath)).unwrap();
 
-                if let Some(err) = TrustDidWeb::read(black_box(did_url.to_string()), black_box(did_log_raw)).err() {
+                if let Some(err) = TrustDidWeb::resolve(black_box(did_url.to_string()), black_box(did_log_raw)).err() {
                     panic!("{}", err.to_string());
                 }
             })
