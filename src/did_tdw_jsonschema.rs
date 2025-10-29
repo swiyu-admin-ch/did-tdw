@@ -13,7 +13,8 @@ struct DidLogJsonSchemaEmbedFolder;
 /// W.r.t. corresponding specification version available at https://identity.foundation/didwebvh/v0.3
 ///
 /// # CAUTION The single currently supported version is: v0.3
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[expect(clippy::exhaustive_enums, reason = "..")]
 pub enum TrustDidWebDidLogEntryJsonSchema {
     /// As defined by https://identity.foundation/didwebvh/v0.3 but w.r.t. (eID-conformity) addendum:
     /// - https://confluence.bit.admin.ch/display/EIDTEAM/DID+Log+Conformity+Check
@@ -34,30 +35,17 @@ const DID_LOG_ENTRY_JSONSCHEMA_V_0_3_EID_CONFORM_FILENAME: &str =
 
 impl DidLogEntryJsonSchema for TrustDidWebDidLogEntryJsonSchema {
     /// Converts this type into a corresponding JSON schema in UTF-8 format.
+    #[inline]
+    #[expect(clippy::unwrap_used, reason = "..")]
     fn get_json_schema(&self) -> String {
-        match self {
-            Self::V03 => {
-                // CAUTION This (i.e. unwrap() call) will panic only if file denoted by DID_LOG_ENTRY_JSONSCHEMA_V_0_3_FILENAME does not exist
-                let jsonschema_file =
-                    DidLogJsonSchemaEmbedFolder::get(DID_LOG_ENTRY_JSONSCHEMA_V_0_3_FILENAME)
-                        .unwrap();
-                // CAUTION This (i.e. unwrap() call) will panic only if file denoted by DID_LOG_ENTRY_JSONSCHEMA_V_0_3_FILENAME is not UTF-8
-                from_utf8(jsonschema_file.data.as_ref())
-                    .unwrap()
-                    .to_string()
-            }
-            Self::V03EidConform => {
-                // CAUTION This (i.e. unwrap() call) will panic only if file denoted by DID_LOG_ENTRY_JSONSCHEMA_V_0_3_BIT_CONFORM_FILENAME does not exist
-                let jsonschema_file = DidLogJsonSchemaEmbedFolder::get(
-                    DID_LOG_ENTRY_JSONSCHEMA_V_0_3_EID_CONFORM_FILENAME,
-                )
-                .unwrap();
-                // CAUTION This (i.e. unwrap() call) will panic only if file denoted by DID_LOG_ENTRY_JSONSCHEMA_V_0_3_BIT_CONFORM_FILENAME is not UTF-8
-                from_utf8(jsonschema_file.data.as_ref())
-                    .unwrap()
-                    .to_string()
-            }
-        }
+        let file_name = match *self {
+            Self::V03 => DID_LOG_ENTRY_JSONSCHEMA_V_0_3_FILENAME,
+            Self::V03EidConform => DID_LOG_ENTRY_JSONSCHEMA_V_0_3_EID_CONFORM_FILENAME,
+        };
+        // CAUTION This unwrap() call will panic only if file denoted by DID_LOG_ENTRY_JSONSCHEMA_V_*_FILENAME does not exist
+        let schema_file = DidLogJsonSchemaEmbedFolder::get(file_name).unwrap();
+        // CAUTION This unwrap() call will panic only if file denoted by schema_file is not UTF-8
+        from_utf8(schema_file.data.as_ref()).unwrap().to_owned()
     }
 }
 
@@ -72,7 +60,7 @@ mod test {
 
     #[rstest]
     // CAUTION V03-specific (happy path) case
-    #[case(vec!(TrustDidWebDidLogEntryJsonSchema::V03), json!([
+    #[case(vec![TrustDidWebDidLogEntryJsonSchema::V03], json!([
         "1-QmcykRx2WnZz2L9s5ACN34E4ADEYGiCde4BJSzoxrhYoiR",
         "2012-12-12T12:12:12Z", 
         {
@@ -116,7 +104,7 @@ mod test {
             "challenge": "1-QmcykRx2WnZz2L9s5ACN34E4ADEYGiCde4BJSzoxrhYoiR"
         }],]), true, "")]
     // CAUTION V03EidConform-specific (happy path) case
-    #[case(vec!(TrustDidWebDidLogEntryJsonSchema::V03EidConform), json!([
+    #[case(vec![TrustDidWebDidLogEntryJsonSchema::V03EidConform], json!([
         "1-QmcykRx2WnZz2L9s5ACN34E4ADEYGiCde4BJSzoxrhYoiR",
         "2012-12-12T12:12:12Z",
         {
@@ -156,7 +144,7 @@ mod test {
             "proofValue": "z4a92V6EKmWvURx99HXVTEM6KJhbVZZ1s4qN8HJXTMesSoDJx1VpTNtuNUpae2eHpXXKwBGjtCYC2EQK7b6eczmnp",
             "challenge": "1-QmcykRx2WnZz2L9s5ACN34E4ADEYGiCde4BJSzoxrhYoiR"
         }],]), true, "")]
-    #[case(vec!(TrustDidWebDidLogEntryJsonSchema::V03, TrustDidWebDidLogEntryJsonSchema::V03EidConform), json!([
+    #[case(vec![TrustDidWebDidLogEntryJsonSchema::V03, TrustDidWebDidLogEntryJsonSchema::V03EidConform], json!([
         "invalid-version-id", 
         "2012-12-12T12:12:12Z",
         {"method": "did:tdw:0.3"}, 
@@ -166,7 +154,7 @@ mod test {
             "challenge": "1-QmcykRx2WnZz2L9s5ACN34E4ADEYGiCde4BJSzoxrhYoiR",
             "proofValue": "z4a92V6EKmWvURx99HXVTEM6KJhbVZZ1s4qN8HJXTMesSoDJx1VpTNtuNUpae2eHpXXKwBGjtCYC2EQK7b6eczmnp",
         }],]), false, "\"invalid-version-id\" does not match \"^[1-9][0-9]*-Q[1-9a-zA-NP-Z]{45,}$\"")]
-    #[case(vec!(TrustDidWebDidLogEntryJsonSchema::V03, TrustDidWebDidLogEntryJsonSchema::V03EidConform), json!([
+    #[case(vec![TrustDidWebDidLogEntryJsonSchema::V03, TrustDidWebDidLogEntryJsonSchema::V03EidConform], json!([
         "1-QmcykRx2WnZz2L9s5ACN34E4ADEYGiCde4BJSzoxrhYoiR",
         "invalid-version-time",
         {"method": "did:tdw:0.3"},
@@ -176,13 +164,13 @@ mod test {
             "challenge": "1-QmcykRx2WnZz2L9s5ACN34E4ADEYGiCde4BJSzoxrhYoiR",
             "proofValue": "z4a92V6EKmWvURx99HXVTEM6KJhbVZZ1s4qN8HJXTMesSoDJx1VpTNtuNUpae2eHpXXKwBGjtCYC2EQK7b6eczmnp",
         }],]), false, "Datetime not in ISO8601 format")]
-    #[case(vec!(TrustDidWebDidLogEntryJsonSchema::V03, TrustDidWebDidLogEntryJsonSchema::V03EidConform), json!(["1-QmcykRx2WnZz2L9s5ACN34E4ADEYGiCde4BJSzoxrhYoiR","2012-12-12T12:12:12Z",{"":""},{"value":{}},[{"":""}]]), false, "Additional properties are not allowed ('' was unexpected)")]
-    #[case(vec!(TrustDidWebDidLogEntryJsonSchema::V03, TrustDidWebDidLogEntryJsonSchema::V03EidConform), json!(["1-QmcykRx2WnZz2L9s5ACN34E4ADEYGiCde4BJSzoxrhYoiR","2012-12-12T12:12:12Z",{},{"value":{"id":""}},[{"":""}]]), false, "\"@context\" is a required property")] // params may be empty, but DID doc must be complete
-    #[case(vec!(TrustDidWebDidLogEntryJsonSchema::V03, TrustDidWebDidLogEntryJsonSchema::V03EidConform), json!(["1-QmcykRx2WnZz2L9s5ACN34E4ADEYGiCde4BJSzoxrhYoiR","2012-12-12T12:12:12Z",{},{"value":{}},[{}]]), false, "A DID log entry must include a JSON array of five items")] // proof must not be empty
-    #[case(vec!(TrustDidWebDidLogEntryJsonSchema::V03, TrustDidWebDidLogEntryJsonSchema::V03EidConform), json!(["","",{},{},[]]), false, "A DID log entry must include a JSON array of five items")] // all empty
-    #[case(vec!(TrustDidWebDidLogEntryJsonSchema::V03, TrustDidWebDidLogEntryJsonSchema::V03EidConform), json!(["","",{},{},[{}]]), false, "A DID log entry must include a JSON array of five items")] // all empty
-    #[case(vec!(TrustDidWebDidLogEntryJsonSchema::V03, TrustDidWebDidLogEntryJsonSchema::V03EidConform), json!(["","","","",""]), false, "A DID log entry must include a JSON array of five items")] // all JSON strings
-    #[case(vec!(TrustDidWebDidLogEntryJsonSchema::V03, TrustDidWebDidLogEntryJsonSchema::V03EidConform), json!([]), false, "A DID log entry must include a JSON array of five items")] // empty array
+    #[case(vec![TrustDidWebDidLogEntryJsonSchema::V03, TrustDidWebDidLogEntryJsonSchema::V03EidConform], json!(["1-QmcykRx2WnZz2L9s5ACN34E4ADEYGiCde4BJSzoxrhYoiR","2012-12-12T12:12:12Z",{"":""},{"value":{}},[{"":""}]]), false, "Additional properties are not allowed ('' was unexpected)")]
+    #[case(vec![TrustDidWebDidLogEntryJsonSchema::V03, TrustDidWebDidLogEntryJsonSchema::V03EidConform], json!(["1-QmcykRx2WnZz2L9s5ACN34E4ADEYGiCde4BJSzoxrhYoiR","2012-12-12T12:12:12Z",{},{"value":{"id":""}},[{"":""}]]), false, "\"@context\" is a required property")] // params may be empty, but DID doc must be complete
+    #[case(vec![TrustDidWebDidLogEntryJsonSchema::V03, TrustDidWebDidLogEntryJsonSchema::V03EidConform], json!(["1-QmcykRx2WnZz2L9s5ACN34E4ADEYGiCde4BJSzoxrhYoiR","2012-12-12T12:12:12Z",{},{"value":{}},[{}]]), false, "A DID log entry must include a JSON array of five items")] // proof must not be empty
+    #[case(vec![TrustDidWebDidLogEntryJsonSchema::V03, TrustDidWebDidLogEntryJsonSchema::V03EidConform], json!(["","",{},{},[]]), false, "A DID log entry must include a JSON array of five items")] // all empty
+    #[case(vec![TrustDidWebDidLogEntryJsonSchema::V03, TrustDidWebDidLogEntryJsonSchema::V03EidConform], json!(["","",{},{},[{}]]), false, "A DID log entry must include a JSON array of five items")] // all empty
+    #[case(vec![TrustDidWebDidLogEntryJsonSchema::V03, TrustDidWebDidLogEntryJsonSchema::V03EidConform], json!(["","","","",""]), false, "A DID log entry must include a JSON array of five items")] // all JSON strings
+    #[case(vec![TrustDidWebDidLogEntryJsonSchema::V03, TrustDidWebDidLogEntryJsonSchema::V03EidConform], json!([]), false, "A DID log entry must include a JSON array of five items")] // empty array
     fn test_validate_using_schema(
         #[case] schemata: Vec<TrustDidWebDidLogEntryJsonSchema>,
         #[case] instance: Value,

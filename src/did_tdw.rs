@@ -21,9 +21,9 @@ use serde_json::Value::Object as JsonObject;
 use serde_json::{
     from_str as json_from_str, json, to_string as json_to_string, Value as JsonValue,
 };
-use std::cmp::PartialEq;
+use std::cmp::PartialEq as _;
 use std::collections::HashMap;
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 use url::Url;
 use url_escape;
 
@@ -32,12 +32,12 @@ pub const SCID_PLACEHOLDER: &str = "{SCID}";
 /// Regex to check if a domain follows the assumption described in https://www.rfc-editor.org/rfc/rfc952.html
 /// Allowed are lowercase letters (a-z), digits (0-9) dash (-) and period (.). Periods are only allowed to
 /// delimit components.
-static DOMAIN_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^[\-a-z0-9]+(\.[\-a-z0-9]+)*$").unwrap());
+static DOMAIN_REGEX: &str = r"^[\-a-z0-9]+(\.[\-a-z0-9]+)*$";
+static HAS_PATH_REGEX: &str = r"([a-z]|[0-9])\/([a-z]|[0-9])";
+static HAS_PORT_REGEX: &str = r"\:[0-9]+";
 
 /// Entry in a did log file as shown here
-/// https://identity.foundation/trustdidweb/#term:did-log-entry
-/// See https://github.com.mcas.ms/decentralized-identity/trustdidweb/blob/63e21b69d84f7d9344f4e6ef4809e7823975c965/spec/specification.md
+/// https://identity.foundation/didwebvh/v0.3/#the-did-log-file
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DidLogEntry {
     /// Since v0.2 (see https://identity.foundation/trustdidweb/v0.3/#didtdw-version-changelog):
@@ -56,12 +56,13 @@ pub struct DidLogEntry {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub proof: Option<Vec<DataIntegrityProof>>,
     #[serde(skip)]
-    prev_entry: Option<Arc<DidLogEntry>>, // Arc-ed to prevent "recursive without indirection"
+    pub prev_entry: Option<Arc<DidLogEntry>>, // Arc-ed to prevent "recursive without indirection"
 }
 
 impl DidLogEntry {
-    #[allow(clippy::too_many_arguments)]
     /// Import of existing log entry
+    #[inline]
+    #[expect(clippy::too_many_arguments, reason = "..")]
     pub fn new(
         version_id: String,
         version_index: usize,
@@ -71,9 +72,9 @@ impl DidLogEntry {
         did_doc_json: String,
         did_doc_hash: String,
         proof: DataIntegrityProof,
-        prev_entry: Option<Arc<DidLogEntry>>,
+        prev_entry: Option<Arc<Self>>,
     ) -> Self {
-        DidLogEntry {
+        Self {
             version_id,
             version_index,
             version_time,
@@ -87,6 +88,7 @@ impl DidLogEntry {
     }
 
     /// Check whether the versionId of this log entry is based on the previous versionId
+    #[inline]
     pub fn verify_version_id_integrity(&self) -> Result<(), DidResolverError> {
         let version_id = self.build_version_id().map_err(|err| {
             DidResolverError::InvalidDataIntegrityProof(format!("Failed to build versionId: {err}"))
@@ -101,81 +103,79 @@ impl DidLogEntry {
     }
 
     /// Check whether the integrity proof matches the content of the did document of this log entry
+    #[inline]
     pub fn verify_data_integrity_proof(&self) -> Result<(), DidResolverError> {
-        match &self.proof {
-            None => {
-                return Err(DidResolverError::InvalidDataIntegrityProof(
-                    "Invalid did log. Proof is empty.".to_string(),
-                ))
-            }
-            Some(v) => {
-                if v.is_empty() {
-                    return Err(DidResolverError::InvalidDataIntegrityProof(
-                        "Invalid did log. Proof is empty.".to_string(),
-                    ));
-                }
-
-                let prev = match self.prev_entry.as_ref() {
-                    None => self,
-                    Some(e) => e,
-                };
-                for proof in v {
-                    let update_key = match proof.extract_update_key() {
-                        Ok(key) => key,
-                        Err(err) => {
-                            return Err(DidResolverError::InvalidDataIntegrityProof(format!(
-                                "Failed to extract update key due to: {err}"
-                            )))
-                        }
-                    };
-
-                    let verifying_key = prev.is_key_authorized_for_update(update_key)?;
-
-                    if !matches!(proof.crypto_suite_type, Some(CryptoSuiteType::EddsaJcs2022)) {
-                        return Err(DidResolverError::InvalidDataIntegrityProof(format!(
-                            "Unsupported proof's cryptosuite {}",
-                            proof.crypto_suite
-                        )));
-                    }
-
-                    let cryptosuite = EddsaJcs2022Cryptosuite {
-                        verifying_key: Some(verifying_key),
-                        signing_key: None,
-                    };
-
-                    match cryptosuite.verify_proof(proof, self.did_doc_hash.as_str()) {
-                        Ok(_) => (),
-                        Err(err) => {
-                            return Err(DidResolverError::InvalidDataIntegrityProof(format!(
-                                "Failed to verify proof due to: {err}"
-                            )))
-                        }
-                    };
-                }
-            }
+        let Some(proof_vec) = self.proof.to_owned() else {
+            return Err(DidResolverError::InvalidDataIntegrityProof(
+                "Invalid did log. Proof is empty.".to_owned(),
+            ));
         };
+
+        if proof_vec.is_empty() {
+            return Err(DidResolverError::InvalidDataIntegrityProof(
+                "Invalid did log. Proof is empty.".to_owned(),
+            ));
+        }
+
+        let prev = self.prev_entry.as_ref().map_or(self, |err| err);
+
+        for proof in proof_vec {
+            let update_key = match proof.extract_update_key() {
+                Ok(key) => key,
+                Err(err) => {
+                    return Err(DidResolverError::InvalidDataIntegrityProof(format!(
+                        "Failed to extract update key due to: {err}"
+                    )))
+                }
+            };
+
+            let verifying_key = prev.is_key_authorized_for_update(update_key)?;
+
+            if !matches!(proof.crypto_suite_type, Some(CryptoSuiteType::EddsaJcs2022)) {
+                return Err(DidResolverError::InvalidDataIntegrityProof(format!(
+                    "Unsupported proof's cryptosuite {}",
+                    proof.crypto_suite
+                )));
+            }
+
+            let cryptosuite = EddsaJcs2022Cryptosuite {
+                verifying_key: Some(verifying_key),
+                signing_key: None,
+            };
+
+            match cryptosuite.verify_proof(&proof, self.did_doc_hash.as_str()) {
+                Ok(_) => (),
+                Err(err) => {
+                    return Err(DidResolverError::InvalidDataIntegrityProof(format!(
+                        "Failed to verify proof due to: {err}"
+                    )))
+                }
+            };
+        }
+
         Ok(())
     }
 
     /// The new versionId takes the form \<version number\>-\<entryHash\>, where \<version number\> is the incrementing integer of version of the entry: 1, 2, 3, etc.
+    #[inline]
     pub fn build_version_id(&self) -> Result<String, DidResolverError> {
         // Since v0.2 (see https://identity.foundation/trustdidweb/v0.3/#didtdw-version-changelog):
         //            The new versionId takes the form <version number>-<entry_hash>, where <version number> is the incrementing integer of version of the entry: 1, 2, 3, etc.
         // Also see https://identity.foundation/trustdidweb/v0.3/#the-did-log-file:
         //            A Data Integrity Proof across the entry, signed by a DID authorized to update the DIDDoc, using the versionId as the challenge.
-        let prev_version_id = match &self.prev_entry {
-            Some(v) => v.version_id.clone(),
+        let prev_version_id = match self.prev_entry.to_owned() {
+            Some(entry) => entry.version_id.to_owned(),
             None => match self.parameters.get_scid_option() {
-                Some(v) => v,
+                Some(scid) => scid,
                 None => {
                     return Err(DidResolverError::DeserializationFailed(
-                        "Error extracting scid".to_string(),
+                        "Error extracting SCID".to_owned(),
                     ))
                 }
             },
         };
 
-        let entry_without_proof = DidLogEntry {
+        let entry_without_proof = Self {
             version_id: prev_version_id,
             version_index: self.version_index,
             version_time: self.version_time,
@@ -200,11 +200,11 @@ impl DidLogEntry {
         &self,
         update_key: String,
     ) -> Result<Ed25519VerifyingKey, DidResolverError> {
-        match &self.parameters.update_keys {
+        match self.parameters.update_keys.to_owned() {
             Some(update_keys) => {
                 if update_keys.is_empty() {
                     return Err(DidResolverError::InvalidDataIntegrityProof(
-                        "No update keys detected".to_string(),
+                        "No update keys detected".to_owned(),
                     ));
                 }
 
@@ -231,10 +231,10 @@ impl DidLogEntry {
             }
             None => {
                 let prev_entry = match self.prev_entry.to_owned() {
-                    Some(e) => e,
+                    Some(err) => err,
                     _ => {
                         return Err(DidResolverError::InvalidDataIntegrityProof(
-                            "No update keys detected".to_string(),
+                            "No update keys detected".to_owned(),
                         ));
                     }
                 };
@@ -245,22 +245,21 @@ impl DidLogEntry {
 
     fn to_log_entry_line(&self) -> Result<JsonValue, DidResolverError> {
         let did_doc_json_value: JsonValue = match serde_json::from_str(&self.did_doc_json) {
-            Ok(v) => v,
+            Ok(val) => val,
             Err(err) => return Err(DidResolverError::DeserializationFailed(format!("{err}"))),
         };
 
         let version_time = self
             .version_time
             .to_owned()
-            .to_rfc3339_opts(SecondsFormat::Secs, true)
-            .to_string();
-        match &self.proof {
+            .to_rfc3339_opts(SecondsFormat::Secs, true);
+        match self.proof.to_owned() {
             Some(proof) => {
                 let first_proof = match proof.first() {
-                    Some(v) => v,
+                    Some(pr) => pr,
                     None => {
                         return Err(DidResolverError::InvalidDataIntegrityProof(
-                            "Invalid did log. Proof is empty.".to_string(),
+                            "Invalid did log. Proof is empty.".to_owned(),
                         ))
                     }
                 };
@@ -313,13 +312,27 @@ impl DidLogEntry {
 pub struct TrustDidWebDidLog {
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub did_log_entries: Vec<DidLogEntry>,
-    did_method_parameters: TrustDidWebDidMethodParameters,
+    pub did_method_parameters: TrustDidWebDidMethodParameters,
 }
 
 impl TryFrom<String> for TrustDidWebDidLog {
     type Error = DidResolverError;
 
     #[inline]
+    #[expect(clippy::unwrap_in_result, reason = "..")]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "panic-safe unwrap calls are possible thanks to profilactic JSON schema conformity check"
+    )]
+    #[expect(clippy::indexing_slicing, reason = "..")]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "number of entries is always way lower than usize::MIN"
+    )]
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "no further variants of serde_json::Value enum are expected in the future"
+    )]
     fn try_from(did_log: String) -> Result<Self, Self::Error> {
         // CAUTION Despite parallelization, bear in mind that (according to benchmarks) the overall
         //         performance improvement will be considerable only in case of larger DID logs,
@@ -339,7 +352,7 @@ impl TryFrom<String> for TrustDidWebDidLog {
         let mut current_params: Option<TrustDidWebDidMethodParameters> = None;
         let mut prev_entry: Option<Arc<DidLogEntry>> = None;
 
-        let mut is_deactivated: bool = false;
+        let mut is_deactivated = false;
         //let now= Local::now();
         let now = Utc::now();
 
@@ -349,7 +362,7 @@ impl TryFrom<String> for TrustDidWebDidLog {
                 .map(|line| {
                     if is_deactivated {
                         return Err(DidResolverError::InvalidDidDocument(
-                            "This DID document is already deactivated. Therefore no additional DID logs are allowed.".to_string()
+                            "This DID document is already deactivated. Therefore no additional DID logs are allowed.".to_owned()
                         ));
                     }
 
@@ -357,7 +370,7 @@ impl TryFrom<String> for TrustDidWebDidLog {
                     //          have already been ensured at this point! 
                     //          Therefore, at this point, the current DID log entry may be considered fully JSON-schema-compliant, so...
                     let entry: JsonValue = serde_json::from_str(line).unwrap();     // ...no panic is expected here
-                    let version_id = entry[0].as_str().unwrap().to_string(); // ...or here
+                    let version_id = entry[0].as_str().unwrap().to_owned(); // ...or here
 
                     // Since v0.2 (see https://identity.foundation/trustdidweb/v0.3/#didtdw-version-changelog):
                     //            The new versionId takes the form <versionNumber>-<entryHash>, where <version number> is the incrementing integer of version of the entry: 1, 2, 3, etc.
@@ -367,14 +380,14 @@ impl TryFrom<String> for TrustDidWebDidLog {
 
                     if prev_entry.is_none() && version_index != 1
                         || prev_entry.is_some() && (version_index - 1).ne(&prev_entry.to_owned().unwrap().version_index) {
-                        return Err(DidResolverError::DeserializationFailed("Version numbers (`versionId`) must be in a sequence of positive consecutive integers.".to_string()));
+                        return Err(DidResolverError::DeserializationFailed("Version numbers (`versionId`) must be in a sequence of positive consecutive integers.".to_owned()));
                     }
 
                     // https://identity.foundation/didwebvh/v0.3/#the-did-log-file:
                     // The `versionTime` (as stated by the DID Controller) of the entry,
                     // in ISO8601 format (https://identity.foundation/didwebvh/v0.3/#term:iso8601).
                     let version_time = entry[1].as_str()
-                        .map(|s| DateTime::parse_from_rfc3339(s)
+                        .map(|str| DateTime::parse_from_rfc3339(str)
                             .unwrap() // no panic is expected here...
                             .to_utc())
                         .unwrap(); // ...or here (as the entry has already been validated)
@@ -385,45 +398,44 @@ impl TryFrom<String> for TrustDidWebDidLog {
                     }
 
                     if prev_entry.is_some() && version_time.lt(&prev_entry.to_owned().unwrap().version_time) {
-                        return Err(DidResolverError::DeserializationFailed("`versionTime` must be greater then the `versionTime` of the previous entry.".to_string()));
+                        return Err(DidResolverError::DeserializationFailed("`versionTime` must be greater then the `versionTime` of the previous entry.".to_owned()));
                     }
 
                     let mut new_params: Option<TrustDidWebDidMethodParameters> = None;
-                    current_params = match entry[2] {
-                        JsonObject(ref obj) => {
+                    current_params = match entry[2].to_owned() {
+                        JsonObject(obj) => {
                             if !obj.is_empty() {
                                 new_params = Some(TrustDidWebDidMethodParameters::from_json(&entry[2].to_string())?);
                             }
 
                             match (current_params.clone(), new_params.clone()) {
                                 (None, None) => return Err(DidResolverError::DeserializationFailed(
-                                    "Missing DID method parameters.".to_string(),
+                                    "Missing DID method parameters.".to_owned(),
                                 )),
-                                (None, Some(new_params)) => {
+                                (None, Some(params)) => {
                                     // this is the first entry, therefore we check for the base configuration
-                                    new_params.validate_initial()?;
+                                    params.validate_initial()?;
 
-                                    Some(new_params) // from the initial log entry
+                                    Some(params) // from the initial log entry
                                 }
-                                (Some(current_params), None) => {
+                                (Some(params), None) => {
                                     new_params = Some(TrustDidWebDidMethodParameters::empty());
-                                    Some(current_params.to_owned())
+                                    Some(params)
                                 }
-                                (Some(current_params), Some(new_params)) => {
-                                    let mut _current_params = current_params.to_owned();
-                                    _current_params.merge_from(&new_params)?;
-                                    Some(_current_params)
+                                (Some(mut current_par), Some(new_par)) => {
+                                    current_par.merge_from(&new_par)?;
+                                    Some(current_par)
                                 }
                             }
                         }
                         _ => {
                             return Err(DidResolverError::DeserializationFailed(
-                                "Missing DID Document parameters.".to_string(),
+                                "Missing DID Document parameters.".to_owned(),
                             ))
                         }
                     };
 
-                    is_deactivated = current_params.to_owned().is_some_and(|p| p.deactivated.is_some_and(|d| d));
+                    is_deactivated = current_params.to_owned().is_some_and(|params| params.deactivated.is_some_and(|deact| deact));
                     if is_deactivated {
                         // https://identity.foundation/didwebvh/v0.3/#deactivate-revoke:
                         // To deactivate the DID, the DID Controller SHOULD add to the DID log entry parameters the item "deactivated": true.
@@ -439,8 +451,8 @@ impl TryFrom<String> for TrustDidWebDidLog {
                     let did_doc_hash: String;
                     let did_doc_json: String;
 
-                    let current_did_doc: DidDoc = match entry[3] {
-                        JsonObject(ref obj) => {
+                    let current_did_doc: DidDoc = match entry[3].to_owned() {
+                        JsonObject(obj) => {
                             if obj.contains_key("value") {
                                 let did_doc_value: JsonValue = obj["value"].to_owned();
                                 if !did_doc_value.is_null() {
@@ -472,48 +484,48 @@ impl TryFrom<String> for TrustDidWebDidLog {
                                     }
                                 } else {
                                     return Err(DidResolverError::DeserializationFailed(
-                                        "Missing DID Document. JSON 'value' was empty.".to_string(),
+                                        "Missing DID Document. JSON 'value' was empty.".to_owned(),
                                     ));
                                 }
                             } else if obj.contains_key("patch") {
                                 return Err(DidResolverError::DeserializationFailed(
-                                    "Missing DID Document. JSON 'patch' is not supported.".to_string(),
+                                    "Missing DID Document. JSON 'patch' is not supported.".to_owned(),
                                 ))
                             } else {
                                 return Err(DidResolverError::DeserializationFailed(
-                                    "Missing DID Document. No 'value' detected.".to_string(),
+                                    "Missing DID Document. No 'value' detected.".to_owned(),
                                 ))
                             }
                         }
                         _ => {
                             return Err(DidResolverError::DeserializationFailed(
-                                "Missing DID Document.".to_string(),
+                                "Missing DID Document.".to_owned(),
                             ))
                         }
                     };
 
                     let proof = match DataIntegrityProof::from(entry[4].to_string()) {
-                        Ok(p) => p,
+                        Ok(pr) => pr,
                         Err(err) => return Err(DidResolverError::DeserializationFailed(format!(
                             "Failed to deserialize data integrity proof due to: {err}"
                         ))),
                     };
 
                     let parameters = match new_params {
-                        Some(new_params) => new_params,
+                        Some(params) => params,
                         None => return Err(DidResolverError::DeserializationFailed(
-                            "Internal error: Missing parameter values.".to_string(),
+                            "Internal error: Missing parameter values.".to_owned(),
                         ))
                     };
 
                     let current_entry = DidLogEntry::new(
-                        version_id.clone(),
+                        version_id,
                         version_index,
                         version_time,
                         parameters,
-                        current_did_doc.clone(),
-                        did_doc_json.clone(),
-                        did_doc_hash.clone(),
+                        current_did_doc,
+                        did_doc_json,
+                        did_doc_hash,
                         proof,
                         prev_entry.clone(),
                     );
@@ -525,11 +537,11 @@ impl TryFrom<String> for TrustDidWebDidLog {
         if current_params.is_none() {
             // unlikely, but still
             return Err(DidResolverError::DeserializationFailed(
-                "Missing DID method parameters.".to_string(),
+                "Missing DID method parameters.".to_owned(),
             ));
         }
 
-        Ok(TrustDidWebDidLog {
+        Ok(Self {
             did_method_parameters: current_params.unwrap(), // a panic-safe unwrap call, due to the previous line
             did_log_entries,
         })
@@ -538,14 +550,19 @@ impl TryFrom<String> for TrustDidWebDidLog {
 
 impl TrustDidWebDidLog {
     /// Checks if all entries in the did log are valid (data integrity, versioning etc.)
+    #[inline]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "number of entries is always way lower than usize::MAX"
+    )]
     pub fn validate_with_scid(
         &self,
         scid_to_validate: Option<String>,
     ) -> Result<DidDoc, DidResolverError> {
         let mut previous_entry: Option<DidLogEntry> = None;
         for entry in &self.did_log_entries {
-            match previous_entry {
-                Some(ref prev) => {
+            match previous_entry.to_owned() {
+                Some(prev) => {
                     // Check if version has incremented
                     if entry.version_index != prev.version_index + 1 {
                         return Err(DidResolverError::InvalidDataIntegrityProof(format!(
@@ -565,7 +582,7 @@ impl TrustDidWebDidLog {
                     let genesis_entry = entry;
                     if genesis_entry.version_index != 1 {
                         return Err(DidResolverError::InvalidDataIntegrityProof(
-                            "Invalid did log. First entry has to have version id 1".to_string(),
+                            "Invalid did log. First entry has to have version id 1".to_owned(),
                         ));
                     }
 
@@ -580,12 +597,12 @@ impl TrustDidWebDidLog {
                         Some(scid_value) => scid_value,
                         None => {
                             return Err(DidResolverError::InvalidDataIntegrityProof(
-                                "Missing SCID inside the DID document.".to_string(),
+                                "Missing SCID inside the DID document.".to_owned(),
                             ))
                         }
                     };
 
-                    if let Some(res) = &scid_to_validate {
+                    if let Some(res) = scid_to_validate.to_owned() {
                         if res.ne(scid.as_str()) {
                             return Err(DidResolverError::InvalidDataIntegrityProof(format!(
                                 "The SCID '{scid}' supplied inside the DID document does not match the one supplied for validation: '{res}'"
@@ -601,7 +618,7 @@ impl TrustDidWebDidLog {
                         })?;
                     if original_scid != scid {
                         return Err(DidResolverError::InvalidDataIntegrityProof(
-                            "Invalid did log. Genesis entry has invalid SCID".to_string(),
+                            "Invalid did log. Genesis entry has invalid SCID".to_owned(),
                         ));
                     }
                     previous_entry = Some(genesis_entry.clone());
@@ -611,27 +628,34 @@ impl TrustDidWebDidLog {
         match previous_entry {
             Some(entry) => Ok(entry.did_doc),
             None => Err(DidResolverError::InvalidDataIntegrityProof(
-                "Invalid did log. No entries found".to_string(),
+                "Invalid did log. No entries found".to_owned(),
             )),
         }
     }
 
     /// Checks if all entries in the did log are valid (data integrity, versioning etc.)
+    #[inline]
     pub fn validate(&self) -> Result<DidDoc, DidResolverError> {
         self.validate_with_scid(None)
     }
 
+    #[inline]
     pub fn get_did_method_parameters(&self) -> TrustDidWebDidMethodParameters {
         self.did_method_parameters.clone()
     }
 }
 
 impl std::fmt::Display for TrustDidWebDidLog {
+    #[inline]
+    #[expect(
+        clippy::min_ident_chars,
+        reason = "using default name (f) to prevent 'renamed function parameter of trait impl' warning"
+    )]
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let mut log = String::new();
         for entry in &self.did_log_entries {
-            let log_line = entry.to_log_entry_line().map_err(|_| std::fmt::Error)?;
-            let serialized = serde_json::to_string(&log_line).map_err(|_| std::fmt::Error)?;
+            let log_line = entry.to_log_entry_line().map_err(|_x| std::fmt::Error)?;
+            let serialized = serde_json::to_string(&log_line).map_err(|_x| std::fmt::Error)?;
             log.push_str(serialized.as_str());
             log.push('\n');
         }
@@ -648,27 +672,26 @@ pub struct TrustDidWebId {
     url: String,
 }
 
-static HAS_PATH_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"([a-z]|[0-9])\/([a-z]|[0-9])").unwrap());
-static HAS_PORT_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\:[0-9]+").unwrap());
-
 impl TrustDidWebId {
     pub const DID_METHOD_NAME: &'static str = "tdw";
 
     /// Yet another UniFFI-compliant method.
     ///
     /// Otherwise, the idiomatic counterpart (try_from(did_tdw: String) -> Result<Self, Self::Error>) may be used as well.
+    #[inline]
     pub fn parse_did_tdw(did_tdw: String) -> Result<Self, TrustDidWebIdResolutionError> {
         match Self::try_from(did_tdw) {
             Ok(parsed) => Ok(parsed),
-            Err(e) => Err(e),
+            Err(err) => Err(err),
         }
     }
 
+    #[inline]
     pub fn get_scid(&self) -> String {
         self.scid.clone()
     }
 
+    #[inline]
     pub fn get_url(&self) -> String {
         self.url.clone()
     }
@@ -680,6 +703,19 @@ impl TryFrom<String> for TrustDidWebId {
 
     /// It basically implements the 'The DID to HTTPS Transformation',
     /// as specified by https://identity.foundation/didwebvh/v0.3/#the-did-to-https-transformation
+    #[inline]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "panic-free indexing ensured in code"
+    )]
+    #[expect(
+        clippy::unwrap_in_result,
+        reason = "panic-free as long as the regex is valid"
+    )]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "panic-free as long as the regex is valid"
+    )]
     fn try_from(did_tdw: String) -> Result<Self, Self::Error> {
         let did_tdw_split: Vec<&str> = did_tdw.splitn(4, ":").collect();
         if did_tdw_split.len() < 4 {
@@ -734,9 +770,13 @@ impl TryFrom<String> for TrustDidWebId {
         // Special characters were encoded by `Url::parse`.
         // URL without domain, that instead use an ip address are already validated in step 5
         if let url::Origin::Tuple(_, url::Host::Domain(domain), _) = url.origin() {
-            if DOMAIN_REGEX.captures(domain.as_str()).is_none() {
+            if Regex::new(DOMAIN_REGEX)
+                .unwrap()
+                .captures(domain.as_str())
+                .is_none()
+            {
                 return Err(TrustDidWebIdResolutionError::InvalidMethodSpecificId(
-                    "Domain of provided DID is invalid".to_string(),
+                    "Domain of provided DID is invalid".to_owned(),
                 ));
             }
         }
@@ -756,13 +796,13 @@ impl TryFrom<String> for TrustDidWebId {
             Err(_) => {
                 // path_segments_mut "Return Err(()) if this URL is cannot-be-a-base."
                 return Err(TrustDidWebIdResolutionError::InvalidMethodSpecificId(
-                    "This URL cannot-be-a-base".to_string(),
+                    "This URL cannot-be-a-base".to_owned(),
                 ));
             }
         };
 
         Ok(Self {
-            scid: scid.to_string(),
+            scid: scid.to_owned(),
             url: url.to_string(),
         })
     }
@@ -773,6 +813,19 @@ impl TryFrom<String> for TrustDidWebId {
 impl TryFrom<(String, Option<bool>)> for TrustDidWebId {
     type Error = TrustDidWebIdResolutionError;
 
+    #[inline]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "panic-free indexing ensured in code"
+    )]
+    #[expect(
+        clippy::unwrap_in_result,
+        reason = "panic-free as long as the regex is valid"
+    )]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "panic-free as long as the regex is valid"
+    )]
     fn try_from(value: (String, Option<bool>)) -> Result<Self, Self::Error> {
         let did_tdw = value.0;
         let allow_http = value.1;
@@ -794,7 +847,7 @@ impl TryFrom<(String, Option<bool>)> for TrustDidWebId {
 
         let mut decoded_url = String::from("");
         match scid.split_once(":") {
-            Some((scid, did_tdw_reduced)) => {
+            Some((scid_str, did_tdw_reduced)) => {
                 url_escape::decode_to_string(did_tdw_reduced.replace(":", "/"), &mut decoded_url);
                 let url = match String::from_utf8(decoded_url.into_bytes()) {
                     Ok(url) => {
@@ -809,20 +862,26 @@ impl TryFrom<(String, Option<bool>)> for TrustDidWebId {
                     }
                     Err(_) => {
                         return Err(TrustDidWebIdResolutionError::InvalidMethodSpecificId(
-                            did_tdw_reduced.to_string(),
+                            did_tdw_reduced.to_owned(),
                         ))
                     }
                 };
-                if HAS_PATH_REGEX.captures(url.as_str()).is_some()
-                    || HAS_PORT_REGEX.captures(url.as_str()).is_some()
+                if Regex::new(HAS_PATH_REGEX)
+                    .unwrap()
+                    .captures(url.as_str())
+                    .is_some()
+                    || Regex::new(HAS_PORT_REGEX)
+                        .unwrap()
+                        .captures(url.as_str())
+                        .is_some()
                 {
                     Ok(Self {
-                        scid: scid.to_string(),
+                        scid: scid_str.to_owned(),
                         url: format!("{url}/did.jsonl"),
                     })
                 } else {
                     Ok(Self {
-                        scid: scid.to_string(),
+                        scid: scid_str.to_owned(),
                         url: format!("{url}/.well-known/did.jsonl"),
                     })
                 }
@@ -844,14 +903,17 @@ pub struct TrustDidWeb {
 }
 
 impl TrustDidWeb {
+    #[inline]
     pub fn get_did(&self) -> String {
         self.did.clone()
     }
 
+    #[inline]
     pub fn get_did_log(&self) -> String {
         self.did_log.clone()
     }
 
+    #[inline]
     pub fn get_did_doc(&self) -> String {
         self.did_doc.clone()
     }
@@ -864,6 +926,7 @@ impl TrustDidWeb {
     /// The thread-safe version of [`TrustDidWeb::get_did_doc_obj`].
     ///
     /// Yet another UniFFI-compliant getter.
+    #[inline]
     pub fn get_did_doc_obj_thread_safe(&self) -> Arc<DidDoc> {
         Arc::new(self.get_did_doc_obj())
     }
@@ -875,20 +938,23 @@ impl TrustDidWeb {
     /// The thread-safe version of [`TrustDidWeb::get_did_method_parameters_obj`].
     ///
     /// Yet another UniFFI-compliant getter.
+    #[inline]
     pub fn get_did_method_parameters(&self) -> Arc<TrustDidWebDidMethodParameters> {
         Arc::new(self.get_did_method_parameters_obj())
     }
 
     /// A UniFFI-compliant constructor.
     #[deprecated(note = "use `resolve` instead")]
+    #[inline]
     pub fn read(did_tdw: String, did_log: String) -> Result<Self, TrustDidWebError> {
         match Self::resolve(did_tdw, did_log) {
-            Ok(v) => Ok(v),
+            Ok(tdw) => Ok(tdw),
             Err(err) => Err(TrustDidWebError::from(err)),
         }
     }
 
     /// A UniFFI-compliant constructor.
+    #[inline]
     pub fn resolve(did_tdw: String, did_log: String) -> Result<Self, DidResolverError> {
         let did_log_obj = TrustDidWebDidLog::try_from(did_log)?;
 
@@ -897,8 +963,8 @@ impl TrustDidWeb {
 
         let did_doc_valid = did_log_obj.validate_with_scid(Some(did.get_scid()))?;
         let did_doc_str = match serde_json::to_string(&did_doc_valid) {
-            Ok(v) => v,
-            Err(e) => return Err(DidResolverError::SerializationFailed(e.to_string())),
+            Ok(str) => str,
+            Err(err) => return Err(DidResolverError::SerializationFailed(err.to_string())),
         };
         Ok(Self {
             did: did_doc_valid.to_owned().id,
@@ -913,15 +979,17 @@ impl TrustDidWeb {
 impl DidResolver for TrustDidWeb {
     //type Error = DidResolverError;
 
+    #[inline]
     fn get_did_doc_obj(&self) -> DidDoc {
         self.get_did_doc_obj()
     }
 
+    #[inline]
     fn collect_did_method_parameters_map(
         &self,
     ) -> Result<HashMap<String, Arc<DidMethodParameter>>, DidResolverError> {
         match self.get_did_method_parameters_obj().try_into() {
-            Ok(v) => Ok(v),
+            Ok(map) => Ok(map),
             Err(err) => Err(DidResolverError::InvalidDidParameter(format!("{err}"))),
         }
     }
@@ -949,35 +1017,25 @@ mod test {
 
     #[rstest]
     // doc needs 5 entries
-    #[case("[1,2,3]", "Invalid did log entry")]
+    #[case("[1,2,3]")]
     // invalid version id
-    #[case("[\"1\",2,3,4,5]", "Invalid entry hash format")]
-    #[case(
-        "[\"invalidNumber-hash\",2,3,4,5]",
-        "the <versionNumber> is not an (unsigned) integer."
-    )]
+    #[case("[\"1\",2,3,4,5]")]
+    #[case("[\"invalidNumber-hash\",2,3,4,5]")]
     // invalid time
-    #[case("[\"1-hash\",[1234],3,4,5]", "Invalid versionTime.")]
-    #[case("[\"1-hash\",\"invalidTime\",3,4,5]", "Invalid versionTime.")]
+    #[case("[\"1-hash\",[1234],3,4,5]")]
+    #[case("[\"1-hash\",\"invalidTime\",3,4,5]")]
     // missing params
-    #[case(
-        "[\"1-hash\",\"2012-12-12T12:12:12Z\",{},4,5]",
-        "Missing DID Document parameters"
-    )]
+    #[case("[\"1-hash\",\"2012-12-12T12:12:12Z\",{},4,5]")]
     // JSON 'patch' is not supported
-    #[case(format!("[\"1-hash\",\"2012-12-12T12:12:12Z\",{},{{\"patch\":0}},5]", build_valid_params_json_string()), "JSON 'patch' is not supported")]
+    #[case(format!("[\"1-hash\",\"2012-12-12T12:12:12Z\",{},{{\"patch\":0}},5]", build_valid_params_json_string()))]
     // JSON 'value' needs to be a valid did doc
-    #[case(format!("[\"1-hash\",\"2012-12-12T12:12:12Z\",{},{{\"value\":\"invalidDoc\"}},5]", build_valid_params_json_string()), "Missing DID document: invalid type")]
-    fn test_invalid_did_log(
-        #[case] did_log: String,
-        #[case] error_string: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    #[case(format!("[\"1-hash\",\"2012-12-12T12:12:12Z\",{},{{\"value\":\"invalidDoc\"}},5]", build_valid_params_json_string()))]
+    fn test_invalid_did_log(#[case] did_log: String) {
         assert_trust_did_web_error(
             TrustDidWebDidLog::try_from(did_log),
             DidResolverErrorKind::DeserializationFailed,
-            error_string,
+            "the supplied DID document is invalid or contains an argument which isn't part of the did specification/recommendation: the supplied JSON instance is not a valid DID log: A DID log entry must include a JSON array of five items of the following types: string, string, object, object and array",
         );
-        Ok(())
     }
 
     #[rstest]
