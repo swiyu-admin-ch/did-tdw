@@ -7,7 +7,8 @@ use did_sidekicks::errors::{DidResolverError, DidResolverErrorKind};
 /// Yet another UniFFI-compliant error.
 ///
 /// Resembles ssi::dids::resolution::Error
-#[derive(Debug, thiserror::Error, PartialEq)]
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[expect(clippy::exhaustive_enums, reason = "..")]
 pub enum TrustDidWebIdResolutionError {
     /// DID method is not supported by this resolver.
     #[error("DID method `{0}` not supported")]
@@ -19,8 +20,9 @@ pub enum TrustDidWebIdResolutionError {
 
 impl TrustDidWebIdResolutionError {
     /// Returns the error kind.
+    #[inline]
     pub fn kind(&self) -> TrustDidWebIdResolutionErrorKind {
-        match self {
+        match *self {
             Self::MethodNotSupported(_) => TrustDidWebIdResolutionErrorKind::MethodNotSupported,
             Self::InvalidMethodSpecificId(_) => {
                 TrustDidWebIdResolutionErrorKind::InvalidMethodSpecificId
@@ -33,6 +35,7 @@ impl TrustDidWebIdResolutionError {
 ///
 /// Each [`TrustDidWebIdResolutionError`] has a kind provided by the [`TrustDidWebIdResolutionErrorKind::kind`] method.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[expect(clippy::exhaustive_enums, reason = "..")]
 pub enum TrustDidWebIdResolutionErrorKind {
     MethodNotSupported,
     InvalidMethodSpecificId,
@@ -41,7 +44,8 @@ pub enum TrustDidWebIdResolutionErrorKind {
 /// Yet another UniFFI-compliant error.
 ///
 /// Resembles ssi::dids::resolution::Error
-#[derive(Debug, thiserror::Error, PartialEq)]
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[expect(clippy::exhaustive_enums, reason = "..")]
 pub enum TrustDidWebError {
     /// DID method is not supported by this resolver
     #[error("DID method `{0}` not supported")]
@@ -74,8 +78,9 @@ pub enum TrustDidWebError {
 
 impl TrustDidWebError {
     /// Returns the error kind.
+    #[inline]
     pub fn kind(&self) -> TrustDidWebErrorKind {
-        match self {
+        match *self {
             Self::MethodNotSupported(_) => TrustDidWebErrorKind::MethodNotSupported,
             Self::InvalidMethodSpecificId(_) => TrustDidWebErrorKind::InvalidMethodSpecificId,
             Self::SerializationFailed(_) => TrustDidWebErrorKind::SerializationFailed,
@@ -89,25 +94,26 @@ impl TrustDidWebError {
 }
 
 impl From<DidResolverError> for TrustDidWebError {
+    #[inline]
     fn from(value: DidResolverError) -> Self {
         match value.kind() {
             DidResolverErrorKind::InvalidMethodSpecificId => {
-                TrustDidWebError::InvalidMethodSpecificId(format!("{value}"))
+                Self::InvalidMethodSpecificId(format!("{value}"))
             }
             DidResolverErrorKind::SerializationFailed => {
-                TrustDidWebError::SerializationFailed(format!("{value}"))
+                Self::SerializationFailed(format!("{value}"))
             }
             DidResolverErrorKind::DeserializationFailed => {
-                TrustDidWebError::DeserializationFailed(format!("{value}"))
+                Self::DeserializationFailed(format!("{value}"))
             }
             DidResolverErrorKind::InvalidDidParameter => {
-                TrustDidWebError::InvalidDidParameter(format!("{value}"))
+                Self::InvalidDidParameter(format!("{value}"))
             }
             DidResolverErrorKind::InvalidDidDocument => {
-                TrustDidWebError::InvalidDidDocument(format!("{value}"))
+                Self::InvalidDidDocument(format!("{value}"))
             }
             DidResolverErrorKind::InvalidIntegrityProof => {
-                TrustDidWebError::InvalidDataIntegrityProof(format!("{value}"))
+                Self::InvalidDataIntegrityProof(format!("{value}"))
             }
         }
     }
@@ -117,6 +123,7 @@ impl From<DidResolverError> for TrustDidWebError {
 ///
 /// Each [`TrustDidWebError`] has a kind provided by the [`TrustDidWebErrorKind::kind`] method.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[expect(clippy::exhaustive_enums, reason = "..")]
 pub enum TrustDidWebErrorKind {
     #[deprecated(note = "as redundant")]
     MethodNotSupported,

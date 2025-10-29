@@ -14,16 +14,36 @@ pub mod did_tdw_method_parameters;
 pub mod errors;
 
 // CAUTION All structs required by UniFFI bindings generator (declared in UDL) MUST also be "used" here
+#[allow(unused_imports, reason = "required by the UniFFI compiler!")]
+#[expect(clippy::allow_attributes, reason = "..")]
 use did_sidekicks::did_doc::*;
+#[allow(unused_imports, reason = "required by the UniFFI compiler!")]
+#[expect(clippy::allow_attributes, reason = "..")]
 use did_sidekicks::errors::*;
+#[allow(unused_imports, reason = "required by the UniFFI compiler!")]
+#[expect(clippy::allow_attributes, reason = "..")]
 use did_tdw::*;
+#[allow(unused_imports, reason = "required by the UniFFI compiler!")]
+#[expect(clippy::allow_attributes, reason = "..")]
 use did_tdw_jsonschema::*;
+#[allow(unused_imports, reason = "required by the UniFFI compiler!")]
+#[expect(clippy::allow_attributes, reason = "..")]
 use did_tdw_method_parameters::*;
+#[allow(unused_imports, reason = "required by the UniFFI compiler!")]
+#[expect(clippy::allow_attributes, reason = "..")]
 use errors::*;
 
 uniffi::include_scaffolding!("did_tdw");
 
 #[cfg(test)]
+#[expect(
+    clippy::unwrap_used,
+    reason = "unwrap calls are panic-safe as long as test case setup is correct"
+)]
+#[expect(
+    clippy::panic,
+    reason = "no panic expected as long as test case setup is correct"
+)]
 mod test {
     use super::did_tdw::*;
     use crate::errors::*;
@@ -33,9 +53,9 @@ mod test {
     use rand::distributions::Alphanumeric;
     use rand::Rng as _;
     use rstest::{fixture, rstest};
-    use serde_json::{Value as JsonValue};
-    use std::path::Path;
+    use serde_json::Value as JsonValue;
     use std::fs;
+    use std::path::Path;
 
     #[fixture]
     fn unique_base_url() -> String {
@@ -128,9 +148,10 @@ mod test {
         "did:tdw:QMySCID:localhost:.hidden",
         "https://localhost/.hidden/did.jsonl"
     )]
+    #[expect(clippy::non_ascii_literal, reason = "..")]
     fn test_tdw_to_url_conversion(#[case] tdw: String, #[case] url: String) {
-        let tdw = TrustDidWebId::parse_did_tdw(tdw).unwrap();
-        let resolved_url = tdw.get_url();
+        let tdw_id = TrustDidWebId::parse_did_tdw(tdw).unwrap();
+        let resolved_url = tdw_id.get_url();
         assert_eq!(resolved_url, url)
     }
 
@@ -159,8 +180,8 @@ mod test {
     #[case("url:tdw:QMySCID:localhost%3A8000:123:456")]
     fn test_tdw_to_url_conversion_error_kind_method_not_supported(#[case] tdw: String) {
         match TrustDidWebId::parse_did_tdw(tdw) {
-            Err(e) => assert_eq!(
-                e.kind(),
+            Err(err) => assert_eq!(
+                err.kind(),
                 TrustDidWebIdResolutionErrorKind::MethodNotSupported
             ),
             _ => panic!(
@@ -181,8 +202,8 @@ mod test {
     #[case("did:tdw::localhost%3A8000:123:456")] // empty/missing SCID
     fn test_tdw_to_url_conversion_error_kind_invalid_method_specific_id(#[case] tdw: String) {
         match TrustDidWebId::parse_did_tdw(tdw) {
-            Err(e) => assert_eq!(
-                e.kind(),
+            Err(err) => assert_eq!(
+                err.kind(),
                 TrustDidWebIdResolutionErrorKind::InvalidMethodSpecificId
             ),
             _ => panic!(
@@ -199,18 +220,19 @@ mod test {
         error_contains: &str,
     ) {
         assert!(res.is_err());
-        let err = res.err();
-        assert!(err.is_some());
-        let err = err.unwrap();
+        let err_opt = res.err();
+        assert!(err_opt.is_some());
+        let err = err_opt.unwrap();
         assert_eq!(err.kind(), expected_kind);
 
-        /*let err_to_string = err.to_string();
+        let err_to_string = err.to_string();
         assert!(
             err_to_string.contains(error_contains),
+            // CAUTION Visible (on the console) only when running 'cargo test' with '-- --nocapture' option
             "expected '{}' is not mentioned in '{}'",
             error_contains,
             err_to_string
-        );*/
+        );
     }
 
     #[rstest]
@@ -219,16 +241,13 @@ mod test {
         "test_data/generated_by_didtoolbox_java/v_0_3_eid_conform/did_doc_without_controller.jsonl"
     )]
     //#[case("test_data/generated_by_tdw_js/unique_update_keys.jsonl")]
-    fn test_generate_version_id(
-        #[case] did_log_raw_filepath: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let did_log_raw = fs::read_to_string(Path::new(&did_log_raw_filepath))?;
-        let did_document = TrustDidWebDidLog::try_from(did_log_raw)?;
+    fn test_generate_version_id(#[case] did_log_raw_filepath: String) {
+        let did_log_raw = fs::read_to_string(Path::new(&did_log_raw_filepath)).unwrap();
+        let did_document = TrustDidWebDidLog::try_from(did_log_raw).unwrap();
         for did_log in did_document.did_log_entries {
-            let generated_version_id = did_log.build_version_id()?;
+            let generated_version_id = did_log.build_version_id().unwrap();
             assert!(generated_version_id == did_log.version_id);
         }
-        Ok(())
     }
 
     #[rstest]
@@ -286,10 +305,7 @@ mod test {
         "test_data/generated_by_didtoolbox_java/v400_did.jsonl",
         "did:tdw:QmPsui8ffosRTxUBP8vJoejauqEUGvhmWe77BNo1StgLk7:identifier-reg.trust-infra.swiyu-int.admin.ch:api:v1:did:18fa7c77-9dd1-4e20-a147-fb1bec146085"
     )]
-    fn test_resolve_did_tdw(
-        #[case] did_log_raw_filepath: String,
-        #[case] did_url: String,
-    ) {
+    fn test_resolve_did_tdw(#[case] did_log_raw_filepath: String, #[case] did_url: String) {
         let did_log_raw = fs::read_to_string(Path::new(&did_log_raw_filepath)).unwrap();
 
         // Read the newly did doc

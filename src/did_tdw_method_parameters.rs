@@ -48,12 +48,12 @@ pub struct TrustDidWebDidMethodParameters {
 }
 
 impl TrustDidWebDidMethodParameters {
+    #[inline]
     pub fn for_genesis_did_doc(scid: String, update_key: String) -> Self {
-        TrustDidWebDidMethodParameters {
+        Self {
             method: Some(String::from(DID_METHOD_PARAMETER_VERSION)),
             scid: Some(scid),
             prerotation: None,
-            //update_keys: None,
             update_keys: Some(vec![update_key]),
             next_keys: None,
             witnesses: None,
@@ -64,8 +64,9 @@ impl TrustDidWebDidMethodParameters {
         }
     }
 
+    #[inline]
     pub fn empty() -> Self {
-        TrustDidWebDidMethodParameters {
+        Self {
             method: None,
             scid: None,
             prerotation: None,
@@ -83,8 +84,9 @@ impl TrustDidWebDidMethodParameters {
     ///
     /// Furthermore, the relevant Swiss profile checks are also taken into account here:
     /// https://github.com/e-id-admin/open-source-community/blob/main/tech-roadmap/swiss-profile.md#didtdwdidwebvh
+    #[inline]
     pub fn validate_initial(&self) -> Result<(), DidResolverError> {
-        if let Some(method) = &self.method {
+        if let Some(method) = self.method.to_owned() {
             // This item MAY appear in later DID log entries to indicate that the processing rules
             // for that and later entries have been changed to a different specification version.
             if method != DID_METHOD_PARAMETER_VERSION {
@@ -96,39 +98,39 @@ impl TrustDidWebDidMethodParameters {
             // This item MUST appear in the first DID log entry.
             return Err(DidResolverError::InvalidDidParameter(
                 "Missing 'method' DID parameter. This item MUST appear in the first DID log entry."
-                    .to_string(),
+                    .to_owned(),
             ));
         }
 
-        if let Some(scid) = &self.scid {
+        if let Some(scid) = self.scid.to_owned() {
             if scid.is_empty() {
                 return Err(DidResolverError::InvalidDidParameter(
-                    "Invalid 'scid' DID parameter. This item MUST appear in the first DID log entry.".to_string(),
+                    "Invalid 'scid' DID parameter. This item MUST appear in the first DID log entry.".to_owned(),
                 ));
             }
         } else {
             return Err(DidResolverError::InvalidDidParameter(
                 "Missing 'scid' DID parameter. This item MUST appear in the first DID log entry."
-                    .to_string(),
+                    .to_owned(),
             ));
         }
 
-        if let Some(update_keys) = &self.update_keys {
+        if let Some(update_keys) = self.update_keys.to_owned() {
             if update_keys.is_empty() {
                 return Err(DidResolverError::InvalidDidParameter(
-                    "Empty 'updateKeys' DID parameter. This item MUST appear in the first DID log entry.".to_string(),
+                    "Empty 'updateKeys' DID parameter. This item MUST appear in the first DID log entry.".to_owned(),
                 ));
             }
         } else {
             return Err(DidResolverError::InvalidDidParameter(
-                "Missing 'updateKeys' DID parameter. This item MUST appear in the first DID log entry.".to_string(),
+                "Missing 'updateKeys' DID parameter. This item MUST appear in the first DID log entry.".to_owned(),
             ));
         }
 
         if let Some(portable) = self.portable {
             if portable {
                 return Err(DidResolverError::InvalidDidParameter(
-                    "Unsupported 'portable' DID parameter. We currently don't support portable dids".to_string(),
+                    "Unsupported 'portable' DID parameter. We currently don't support portable dids".to_owned(),
                 ));
             }
         }
@@ -136,25 +138,25 @@ impl TrustDidWebDidMethodParameters {
         if let Some(prerotation) = self.prerotation {
             if prerotation {
                 return Err(DidResolverError::InvalidDidParameter(
-                    "Unsupported 'prerotation' DID parameter. We currently don't support prerotation".to_string(),
+                    "Unsupported 'prerotation' DID parameter. We currently don't support prerotation".to_owned(),
                 ));
             }
         }
 
-        if let Some(next_keys) = &self.next_keys {
+        if let Some(next_keys) = self.next_keys.to_owned() {
             if !next_keys.is_empty() {
                 return Err(DidResolverError::InvalidDidParameter(
-                    "Unsupported non-empty 'nextKeyHashes' DID parameter.".to_string(),
+                    "Unsupported non-empty 'nextKeyHashes' DID parameter.".to_owned(),
                 ));
             }
         }
 
-        if let Some(witnesses) = &self.witnesses {
+        if let Some(witnesses) = self.witnesses.to_owned() {
             if !witnesses.is_empty() {
                 // A witness item in the first DID log entry is used to define the witnesses and necessary threshold for that initial log entry.
                 // In all other DID log entries, a witness item becomes active after the publication of its entry.
                 return Err(DidResolverError::InvalidDidParameter(
-                    "Unsupported non-empty 'witnesses' DID parameter.".to_string(),
+                    "Unsupported non-empty 'witnesses' DID parameter.".to_owned(),
                 ));
             }
         }
@@ -162,10 +164,8 @@ impl TrustDidWebDidMethodParameters {
         Ok(())
     }
 
-    pub fn merge_from(
-        &mut self,
-        other: &TrustDidWebDidMethodParameters,
-    ) -> Result<(), DidResolverError> {
+    #[inline]
+    pub fn merge_from(&mut self, other: &Self) -> Result<(), DidResolverError> {
         let new_params = other.to_owned();
         let current_params = self.clone();
         self.method = match new_params.method {
@@ -186,8 +186,7 @@ impl TrustDidWebDidMethodParameters {
             Some(scid) => {
                 if current_params.scid.is_none_or(|x| x != scid) {
                     return Err(DidResolverError::InvalidDidParameter(
-                        "Invalid 'scid' DID parameter. The 'scid' parameter is not allowed to change."
-                        .to_string(),
+                        "Invalid 'scid' DID parameter. The 'scid' parameter is not allowed to change.".to_owned(),
                     ));
                 };
                 Some(scid)
@@ -199,10 +198,10 @@ impl TrustDidWebDidMethodParameters {
 
         self.portable = match (current_params.portable, new_params.portable) {
             (Some(true), Some(true)) => return Err(DidResolverError::InvalidDidParameter(
-                "Unsupported 'portable' DID parameter. We currently don't support portable dids".to_string(),
+                "Unsupported 'portable' DID parameter. We currently don't support portable dids".to_owned(),
             )),
             (_, Some(true)) =>  return Err(DidResolverError::InvalidDidParameter(
-                "Invalid 'portable' DID parameter. The value can ONLY be set to true in the first log entry, the initial version of the DID.".to_string(),
+                "Invalid 'portable' DID parameter. The value can ONLY be set to true in the first log entry, the initial version of the DID.".to_owned(),
             )),
             (_, Some(false)) => Some(false),
             (_, None) => current_params.portable
@@ -211,7 +210,7 @@ impl TrustDidWebDidMethodParameters {
 
         self.prerotation = match (current_params.prerotation, new_params.prerotation) {
             (Some(true), Some(false)) => return Err(DidResolverError::InvalidDidParameter(
-                "Invalid 'prerotation' DID parameter. Once the value is set to true in a DID log entry it MUST NOT be set to false in a subsequent entry.".to_string(),
+                "Invalid 'prerotation' DID parameter. Once the value is set to true in a DID log entry it MUST NOT be set to false in a subsequent entry.".to_owned(),
             )),
             (_, Some(new_pre)) => Some(new_pre),
             (_, None) => current_params.prerotation
@@ -222,7 +221,7 @@ impl TrustDidWebDidMethodParameters {
             Some(witnesses) => {
                 if !witnesses.is_empty() {
                     return Err(DidResolverError::InvalidDidParameter(
-                        "Unsupported non-empty 'witnesses' DID parameter.".to_string(),
+                        "Unsupported non-empty 'witnesses' DID parameter.".to_owned(),
                     ));
                 }
                 Some(vec![])
@@ -232,13 +231,13 @@ impl TrustDidWebDidMethodParameters {
 
         self.deactivated = match (current_params.deactivated, new_params.deactivated) {
             (Some(true), _) => return Err(DidResolverError::InvalidDidDocument(
-                "This DID document is already deactivated. Therefore no additional DID logs are allowed.".to_string()
+                "This DID document is already deactivated. Therefore no additional DID logs are allowed.".to_owned()
             )),
             (_, Some(deactivate)) => Some(deactivate),
             (_, None) => current_params.deactivated,
         };
 
-        self.ttl = new_params.ttl.or(self.ttl.to_owned());
+        self.ttl = new_params.ttl.or(self.ttl);
 
         self.witness_threshold = new_params
             .witness_threshold
@@ -248,49 +247,54 @@ impl TrustDidWebDidMethodParameters {
     }
 
     /// As specified by https://identity.foundation/didwebvh/v0.3/#deactivate-revoke
+    #[inline]
     pub fn deactivate(&mut self) {
         self.update_keys = Some(vec![]);
         self.deactivated = Some(true);
     }
 
+    #[inline]
     pub fn from_json(json_content: &str) -> Result<Self, DidResolverError> {
-        let did_method_parameters: TrustDidWebDidMethodParameters =
-            match serde_json::from_str(json_content) {
-                Ok(did_method_parameters) => did_method_parameters,
-                Err(err) => {
-                    return Err(DidResolverError::DeserializationFailed(format!(
-                        "Error parsing DID method parameters: {err}"
-                    )));
-                }
-            };
+        let did_method_parameters: Self = match serde_json::from_str(json_content) {
+            Ok(did_method_parameters) => did_method_parameters,
+            Err(err) => {
+                return Err(DidResolverError::DeserializationFailed(format!(
+                    "Error parsing DID method parameters: {err}"
+                )));
+            }
+        };
         Ok(did_method_parameters)
     }
 
+    #[inline]
     pub fn get_scid_option(&self) -> Option<String> {
         self.scid.clone()
     }
 
     /// Yet another UniFFI-compliant getter.
+    #[inline]
     pub fn get_scid(&self) -> String {
-        if let Some(v) = &self.scid {
-            return v.clone();
+        if let Some(scid) = self.scid.to_owned() {
+            return scid;
         }
-        "".to_string()
+        "".to_owned()
     }
 
     /// Yet another UniFFI-compliant getter.
+    #[inline]
     pub fn get_update_keys(&self) -> Vec<String> {
-        if let Some(v) = &self.update_keys {
-            return v.clone();
+        if let Some(update_keys) = self.update_keys.to_owned() {
+            return update_keys;
         }
         vec![]
     }
 
     /// Yet another UniFFI-compliant getter.
+    #[inline]
     pub fn is_deactivated(&self) -> bool {
-        if let Some(v) = self.deactivated {
-            if v {
-                return v;
+        if let Some(deactivated) = self.deactivated {
+            if deactivated {
+                return deactivated;
             }
         }
         false
@@ -303,27 +307,28 @@ impl TryInto<HashMap<String, Arc<DidMethodParameter>>> for TrustDidWebDidMethodP
     /// Conversion of [`TrustDidWebDidMethodParameters`] into map of [`DidMethodParameter`] objects.
     ///
     /// A UniFFI-compliant method.
+    #[inline]
+    #[expect(clippy::unwrap_in_result, reason = "..")]
+    #[expect(clippy::unwrap_used, reason = "..")]
     fn try_into(self) -> Result<HashMap<String, Arc<DidMethodParameter>>, Self::Error> {
-        let params = self.clone();
-
         // MUST appear in the first DID log entry
-        let method = match DidMethodParameter::new_string_from_option("method", params.method) {
-            Ok(v) => v,
+        let method = match DidMethodParameter::new_string_from_option("method", self.method) {
+            Ok(val) => val,
             Err(err) => return Err(DidResolverError::InvalidDidParameter(format!("{err}"))),
         };
 
         // MUST appear in the first log entry. MUST NOT appear in later log entries
-        let scid = match DidMethodParameter::new_string_from_option("scid", params.scid) {
-            Ok(v) => v,
+        let scid = match DidMethodParameter::new_string_from_option("scid", self.scid) {
+            Ok(val) => val,
             Err(err) => return Err(DidResolverError::InvalidDidParameter(format!("{err}"))),
         };
 
         // This property MUST appear in the first log entry and MAY appear in subsequent entries
         let update_keys = match DidMethodParameter::new_string_array_from_option(
             "updateKeys",
-            params.update_keys,
+            self.update_keys,
         ) {
-            Ok(v) => v,
+            Ok(val) => val,
             Err(err) => return Err(DidResolverError::InvalidDidParameter(format!("{err}"))),
         };
 
@@ -334,25 +339,25 @@ impl TryInto<HashMap<String, Arc<DidMethodParameter>>> for TrustDidWebDidMethodP
             ("updateKeys".to_owned(), Arc::new(update_keys)),
             // Defaults to false if omitted in the first entry
             (
-                "portable".to_string(),
+                "portable".to_owned(),
                 Arc::new(DidMethodParameter::new_bool_from_option(
                     "portable",
-                    params.deactivated,
+                    self.deactivated,
                 )),
             ),
             // Defaults to false if not set in the first DID log entry
             (
-                "deactivated".to_string(),
+                "deactivated".to_owned(),
                 Arc::new(DidMethodParameter::new_bool_from_option(
                     "deactivated",
-                    params.deactivated,
+                    self.deactivated,
                 )),
             ),
             // Defaults to 3600 (1 hour) if not set in the first DID log entry
             (
-                "ttl".to_string(),
+                "ttl".to_owned(),
                 Arc::new(
-                    DidMethodParameter::new_number_from_option("ttl", params.ttl).unwrap_or_else(
+                    DidMethodParameter::new_number_from_option("ttl", self.ttl).unwrap_or_else(
                         |_| DidMethodParameter::new_number_from_option("ttl", Some(3600)).unwrap(),
                     ),
                 ),
